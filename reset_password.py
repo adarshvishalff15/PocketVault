@@ -5,7 +5,7 @@ from auth import update_user, get_user, list_users
 
 def main():
     print("\n==============================================")
-    print("   WINDOWS 11 FILE SERVER - PASSWORD RESET")
+    print("      POCKETVAULT - PASSWORD RESET WIZARD     ")
     print("==============================================\n")
     
     users = list_users()

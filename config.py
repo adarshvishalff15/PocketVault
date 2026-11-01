@@ -32,9 +32,9 @@ SECRET_KEY = os.environ.get("POCKETVAULT_SECRET_KEY", os.environ.get("FILE_SERVE
 MAX_LOGIN_ATTEMPTS = int(os.environ.get("POCKETVAULT_MAX_ATTEMPTS", "5"))
 LOCKOUT_DURATION_MINUTES = int(os.environ.get("POCKETVAULT_LOCKOUT_MINS", "10"))
 
-# Optional environment fallback credentials
-ENV_USER = os.environ.get("POCKETVAULT_USER", os.environ.get("FILE_SERVER_USER", "admin"))
-ENV_PASSWORD = os.environ.get("POCKETVAULT_PASSWORD", os.environ.get("FILE_SERVER_PASSWORD", ""))
+# Default admin credentials
+ENV_USER = os.environ.get("POCKETVAULT_USER", os.environ.get("FILE_SERVER_USER", "vishal"))
+ENV_PASSWORD = os.environ.get("POCKETVAULT_PASSWORD", os.environ.get("FILE_SERVER_PASSWORD", "vishal123"))
 
 # Session duration in seconds (default: 24 hours)
 SESSION_LIFETIME = int(os.environ.get("POCKETVAULT_SESSION_HOURS", "24")) * 3600

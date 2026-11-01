@@ -156,6 +156,19 @@ PocketVault automatically mounts and categorizes your device's storage without r
 
 ---
 
+## 🔑 Default Administrator Credentials
+
+PocketVault comes pre-configured with default administrator credentials:
+
+| Credential | Default Value |
+| :--- | :--- |
+| **Admin Username** | `vishal` |
+| **Admin Password** | `vishal123` |
+
+> 💡 **Change Password Anytime**: Run `python reset_password.py` or double-click `change_password.bat` on Windows to change your administrator credentials at any time.
+
+---
+
 ## 🔒 Security Architecture
 
 1. **Authentication**: Passwords are encrypted using **PBKDF2-HMAC-SHA256** with high iteration rounds.
@@ -170,6 +183,8 @@ PocketVault automatically mounts and categorizes your device's storage without r
 
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
+| `POCKETVAULT_USER` | `vishal` | Default administrator username |
+| `POCKETVAULT_PASSWORD` | `vishal123` | Default administrator password |
 | `POCKETVAULT_PORT` | `8288` | Port to bind |
 | `POCKETVAULT_HOST` | `0.0.0.0` | Host interface |
 | `POCKETVAULT_NAME` | `PocketVault` | Server display name |

@@ -1,5 +1,5 @@
 @echo off
-title Change Password - Windows 11 Remote File Server
+title PocketVault - Password Reset Wizard
 cd /d "%~dp0"
 python reset_password.py
 pause

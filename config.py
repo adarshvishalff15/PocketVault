@@ -1,6 +1,6 @@
 """Configuration module for PocketVault Mobile File Server.
 
-Handles safe roots detection (Android Termux, Linux, Windows),
+Handles safe roots detection (Android Termux, Kali Linux, Linux, Windows),
 security defaults, environment configuration, and persistence.
 """
 
@@ -78,6 +78,7 @@ def is_android_environment() -> bool:
         or os.path.exists("/storage/emulated/0")
         or "TERMUX_VERSION" in os.environ
         or "ANDROID_ROOT" in os.environ
+        or "ANDROID_DATA" in os.environ
         or Path.home().joinpath("storage").is_dir()
         or os.path.exists("/data/data/com.termux")
         or ("PREFIX" in os.environ and "com.termux" in os.environ["PREFIX"])
@@ -92,22 +93,25 @@ def get_android_roots() -> list[dict]:
 
     # Priority Android storage paths
     candidate_locations = [
-        ("Internal Storage", [Path("/storage/emulated/0"), Path("/sdcard"), termux_storage / "shared"]),
-        ("Camera & DCIM", [Path("/sdcard/DCIM"), Path("/storage/emulated/0/DCIM"), termux_storage / "dcim"]),
-        ("Pictures & Wallpapers", [Path("/sdcard/Pictures"), Path("/storage/emulated/0/Pictures"), termux_storage / "pictures"]),
-        ("Videos & Movies", [Path("/sdcard/Movies"), Path("/storage/emulated/0/Movies"), termux_storage / "movies"]),
-        ("Downloads", [Path("/sdcard/Download"), Path("/storage/emulated/0/Download"), termux_storage / "downloads"]),
-        ("Documents", [Path("/sdcard/Documents"), Path("/storage/emulated/0/Documents"), termux_storage / "documents"]),
-        ("Music & Audio", [Path("/sdcard/Music"), Path("/storage/emulated/0/Music"), termux_storage / "music"]),
+        ("Internal Storage", [termux_storage / "shared", Path("/storage/emulated/0"), Path("/sdcard")]),
+        ("Camera & DCIM", [termux_storage / "dcim", Path("/storage/emulated/0/DCIM"), Path("/sdcard/DCIM")]),
+        ("Pictures & Wallpapers", [termux_storage / "pictures", Path("/storage/emulated/0/Pictures"), Path("/sdcard/Pictures")]),
+        ("Downloads", [termux_storage / "downloads", Path("/storage/emulated/0/Download"), Path("/sdcard/Download")]),
+        ("Documents", [termux_storage / "documents", Path("/storage/emulated/0/Documents"), Path("/sdcard/Documents")]),
+        ("Videos & Movies", [termux_storage / "movies", Path("/storage/emulated/0/Movies"), Path("/sdcard/Movies")]),
+        ("Music & Audio", [termux_storage / "music", Path("/storage/emulated/0/Music"), Path("/sdcard/Music")]),
     ]
 
     for label, paths in candidate_locations:
         for p in paths:
             try:
                 if p.exists() and p.is_dir():
-                    resolved = p.resolve()
-                    # Prevent duplicate path entries
-                    if resolved not in [r["path"] for r in roots] and p not in [r["path"] for r in roots]:
+                    try:
+                        resolved = p.resolve()
+                    except Exception:
+                        resolved = p
+                    existing_paths = [r["path"] for r in roots]
+                    if resolved not in existing_paths and p not in existing_paths:
                         roots.append({
                             "id": len(roots),
                             "name": label,
@@ -120,16 +124,61 @@ def get_android_roots() -> list[dict]:
             except Exception:
                 continue
 
-    # Fallback to Termux home directory if nothing found
-    if not roots:
-        roots.append({
-            "id": 0,
-            "name": "Termux Home",
-            "path": user_home.resolve(),
-            "type": "folder",
-            "drive_type": "folder",
-            "remote_name": "",
-        })
+    # MicroSD / External SD card detection
+    sdcard_candidates = [
+        termux_storage / "external-1",
+        termux_storage / "external",
+    ]
+    try:
+        storage_dir = Path("/storage")
+        if storage_dir.exists() and storage_dir.is_dir():
+            for sub in storage_dir.iterdir():
+                try:
+                    if sub.name not in ("emulated", "self", "knox-emulated") and sub.is_dir():
+                        sdcard_candidates.append(sub)
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
+    for p in sdcard_candidates:
+        try:
+            if p.exists() and p.is_dir():
+                try:
+                    resolved = p.resolve()
+                except Exception:
+                    resolved = p
+                existing_paths = [r["path"] for r in roots]
+                if resolved not in existing_paths and p not in existing_paths:
+                    roots.append({
+                        "id": len(roots),
+                        "name": f"SD Card ({p.name})",
+                        "path": resolved,
+                        "type": "drive",
+                        "drive_type": "drive",
+                        "remote_name": "",
+                    })
+        except Exception:
+            continue
+
+    # Termux Home directory (always add so scripts & repos are browsable)
+    try:
+        resolved_home = user_home.resolve()
+        existing_paths = [r["path"] for r in roots]
+        if resolved_home not in existing_paths and user_home not in existing_paths:
+            roots.append({
+                "id": len(roots),
+                "name": "Termux Home",
+                "path": resolved_home,
+                "type": "folder",
+                "drive_type": "folder",
+                "remote_name": "",
+            })
+    except Exception:
+        pass
+
+    for idx, r in enumerate(roots):
+        r["id"] = idx
 
     return roots
 
@@ -138,7 +187,8 @@ def get_default_safe_roots() -> list[dict]:
     """Returns safe, user-friendly default roots.
     
     If running on Android / Termux, auto-discovers Android shared folders.
-    If running on Windows / Linux, mounts standard user library folders and safe drives.
+    If running on Linux (e.g. Kali Linux), mounts user home, standard library folders, and /media or /mnt drives.
+    If running on Windows, mounts standard user folders and all safe logical drives.
     """
     if is_android_environment():
         android_roots = get_android_roots()
@@ -149,30 +199,81 @@ def get_default_safe_roots() -> list[dict]:
     user_home = Path.home()
 
     # User library folders
+    # On Linux / Kali Linux, include user home as 'Home Directory' so everything in ~/ is accessible
     common_user_folders = [
+        ("Home Directory", user_home),
+        ("Downloads", user_home / "Downloads"),
+        ("Documents", user_home / "Documents"),
         ("Pictures", user_home / "Pictures"),
         ("Videos", user_home / "Videos"),
         ("Music", user_home / "Music"),
-        ("Documents", user_home / "Documents"),
-        ("Downloads", user_home / "Downloads"),
         ("Desktop", user_home / "Desktop"),
     ]
 
     for label, folder in common_user_folders:
         try:
             if folder.exists():
-                resolved = folder.resolve(strict=True)
-                if resolved.is_dir() and resolved not in [r["path"] for r in roots]:
-                    roots.append({
-                        "id": len(roots),
-                        "name": label,
-                        "path": resolved,
-                        "type": "folder",
-                        "drive_type": "folder",
-                        "remote_name": "",
-                    })
+                try:
+                    resolved = folder.resolve(strict=True)
+                except Exception:
+                    resolved = folder
+                if resolved.is_dir():
+                    existing_paths = [r["path"] for r in roots]
+                    if resolved not in existing_paths and folder not in existing_paths:
+                        roots.append({
+                            "id": len(roots),
+                            "name": label,
+                            "path": resolved,
+                            "type": "folder",
+                            "drive_type": "folder",
+                            "remote_name": "",
+                        })
         except (OSError, RuntimeError):
             continue
+
+    # On Linux (Kali Linux, Ubuntu, Debian, etc.), detect mounted storage (/media, /run/media, /mnt)
+    if os.name != "nt":
+        mount_candidates = [Path("/media"), Path("/run/media"), Path("/mnt")]
+        for mloc in mount_candidates:
+            try:
+                if mloc.exists() and mloc.is_dir():
+                    for item in mloc.iterdir():
+                        try:
+                            if item.is_dir():
+                                # In Kali, automounted USBs are often at /media/kali/<drive_name>
+                                if item.name in ("kali", "root", user_home.name):
+                                    for sub in item.iterdir():
+                                        try:
+                                            if sub.is_dir():
+                                                resolved = sub.resolve()
+                                                existing_paths = [r["path"] for r in roots]
+                                                if resolved not in existing_paths and sub not in existing_paths:
+                                                    roots.append({
+                                                        "id": len(roots),
+                                                        "name": f"Drive ({sub.name})",
+                                                        "path": resolved,
+                                                        "type": "drive",
+                                                        "drive_type": "drive",
+                                                        "remote_name": "",
+                                                    })
+                                        except Exception:
+                                            continue
+                                else:
+                                    resolved = item.resolve()
+                                    existing_paths = [r["path"] for r in roots]
+                                    if resolved not in existing_paths and item not in existing_paths:
+                                        roots.append({
+                                            "id": len(roots),
+                                            "name": f"Drive ({item.name})",
+                                            "path": resolved,
+                                            "type": "drive",
+                                            "drive_type": "drive",
+                                            "remote_name": "",
+                                        })
+                        except Exception:
+                            continue
+            except Exception:
+                continue
 
     # On Windows, discover non-system and data drives
     if os.name == "nt":
@@ -206,7 +307,8 @@ def get_default_safe_roots() -> list[dict]:
                             pass
 
                         name = f"{label} ({letter}:)" if label else f"Drive ({letter}:)"
-                        if p not in [r["path"] for r in roots]:
+                        existing_paths = [r["path"] for r in roots]
+                        if p not in existing_paths:
                             roots.append({
                                 "id": len(roots),
                                 "name": name,
@@ -222,7 +324,14 @@ def get_default_safe_roots() -> list[dict]:
 
     # If nothing was found, fall back to user home
     if not roots:
-        roots.append({"id": 0, "name": "Home Directory", "path": user_home.resolve(), "type": "folder", "drive_type": "folder", "remote_name": ""})
+        try:
+            resolved_home = user_home.resolve()
+        except Exception:
+            resolved_home = user_home
+        roots.append({"id": 0, "name": "Home Directory", "path": resolved_home, "type": "folder", "drive_type": "folder", "remote_name": ""})
+
+    for idx, r in enumerate(roots):
+        r["id"] = idx
 
     return roots
 
@@ -235,7 +344,7 @@ def load_configured_roots() -> list[dict]:
 
     roots = []
     candidates = [p.strip() for p in configured.split(os.pathsep) if p.strip()]
-    for idx, cand in enumerate(candidates):
+    for cand in candidates:
         try:
             p = Path(cand).expanduser()
             if not p.is_dir():
@@ -245,9 +354,10 @@ def load_configured_roots() -> list[dict]:
             except Exception:
                 resolved = p
 
-            if resolved not in [r["path"] for r in roots] and p not in [r["path"] for r in roots]:
+            existing_paths = [r["path"] for r in roots]
+            if resolved not in existing_paths and p not in existing_paths:
                 roots.append({
-                    "id": idx,
+                    "id": len(roots),
                     "name": resolved.name or str(resolved),
                     "path": resolved,
                     "type": "folder",
@@ -259,6 +369,10 @@ def load_configured_roots() -> list[dict]:
 
     if not roots:
         return get_default_safe_roots()
+
+    for idx, r in enumerate(roots):
+        r["id"] = idx
+
     return roots
 
 
@@ -279,7 +393,12 @@ def get_roots(force_refresh: bool = False) -> list[dict]:
 
 
 def get_root_by_id(root_id: int):
-    """Find root by its integer ID."""
+    """Find root by its integer ID with graceful fallback."""
+    try:
+        root_id = int(root_id)
+    except (TypeError, ValueError):
+        root_id = 0
+
     roots = get_roots()
     for r in roots:
         if r["id"] == root_id:
@@ -288,4 +407,6 @@ def get_root_by_id(root_id: int):
     for r in roots:
         if r["id"] == root_id:
             return r
+    if roots:
+        return roots[0]
     return None

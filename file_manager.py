@@ -138,6 +138,7 @@ def list_directory(
                         "size_human": human_size(size) if is_file else "—",
                         "modified_ts": mtime,
                         "modified_str": mtime_dt.strftime("%Y-%m-%d %H:%M"),
+                        "modified_human": mtime_dt.strftime("%Y-%m-%d %H:%M"),
                         "extension": ext,
                         "category": cat,
                         "mime_type": mime_type,
@@ -198,6 +199,7 @@ def search_files_recursive(
 
     root_path = root_info["path"]
     query_lower = query.strip().lower()
+    match_all = not query_lower or query_lower in (".", "*")
     results = []
 
     for root_dir, dirs, files in os.walk(root_path, followlinks=False):
@@ -212,10 +214,10 @@ def search_files_recursive(
             continue
 
         # Exclude hidden or system directories like $RECYCLE.BIN, System Volume Information, .git
-        dirs[:] = [d for d in dirs if not d.startswith((".", "$")) and d not in ("System Volume Information", "node_modules", "Windows")]
+        dirs[:] = [d for d in dirs if not d.startswith((".", "$")) and d not in ("System Volume Information", "node_modules", "Windows", "__pycache__", ".git")]
 
         for name in files:
-            if query_lower in name.lower():
+            if match_all or query_lower in name.lower():
                 try:
                     candidate = safe_resolve_path(Path(root_dir), name)
                     if not candidate.is_file():
@@ -230,12 +232,16 @@ def search_files_recursive(
                     rel_item_path = candidate.relative_to(root_path).as_posix()
 
                     results.append({
+                        "root_id": root_id,
+                        "root_name": root_info["name"],
                         "name": name,
                         "rel_path": rel_item_path,
                         "is_dir": False,
                         "size": stat.st_size,
                         "size_human": human_size(stat.st_size),
+                        "modified_ts": stat.st_mtime,
                         "modified_str": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                        "modified_human": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
                         "category": cat,
                         "extension": ext,
                         "can_preview": cat in ("image", "pdf", "document", "presentation", "spreadsheet", "text", "archive"),

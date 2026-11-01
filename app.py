@@ -272,7 +272,36 @@ def api_roots():
     return jsonify({"success": True, "roots": accessible})
 
 
+@app.route("/api/storage/info")
+@app.route("/api/storage")
+def api_storage_info_endpoint():
+    auth_err = require_auth()
+    if auth_err:
+        return auth_err
+
+    roots = get_roots()
+    if not roots:
+        return jsonify({"success": True, "storage": {"percent_used": 0, "free_human": "N/A", "total_human": "N/A"}})
+
+    root_arg = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id", 0)
+    try:
+        root_id = int(root_arg)
+    except (TypeError, ValueError):
+        root_id = 0
+
+    root_info = get_root_by_id(root_id) or roots[0]
+    storage = get_storage_info(root_info["path"])
+    return jsonify({
+        "success": True,
+        "storage": storage,
+        "root_id": root_info["id"],
+        "root_name": root_info["name"],
+        "roots_count": len(roots),
+    })
+
+
 @app.route("/api/browse")
+@app.route("/api/files/list")
 def api_browse():
     auth_err = require_auth()
     if auth_err:
@@ -281,7 +310,8 @@ def api_browse():
     if not has_permission("read"):
         return jsonify({"success": False, "error": "Permission denied: read access disabled."}), 403
 
-    root_info, err = get_authorized_root(request.args.get("root", 0))
+    root_arg = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id", 0)
+    root_info, err = get_authorized_root(root_arg)
     if err:
         return err
 
@@ -292,9 +322,9 @@ def api_browse():
 
     try:
         page = int(request.args.get("page", 1))
-        per_page = int(request.args.get("per_page", 100))
+        per_page = int(request.args.get("per_page", 250))
     except (ValueError, TypeError):
-        page, per_page = 1, 100
+        page, per_page = 1, 250
 
     try:
         data = list_directory(
@@ -306,7 +336,14 @@ def api_browse():
             per_page=per_page,
             search_query=search_q,
         )
-        return jsonify({"success": True, **data})
+        directories = [i for i in data.get("items", []) if i.get("is_dir")]
+        files = [i for i in data.get("items", []) if not i.get("is_dir")]
+        return jsonify({
+            "success": True,
+            **data,
+            "directories": directories,
+            "files": files,
+        })
     except FileNotFoundError:
         return jsonify({"success": False, "error": "Directory not found."}), 404
     except PermissionError as pe:
@@ -318,6 +355,7 @@ def api_browse():
 
 
 @app.route("/api/search")
+@app.route("/api/files/search")
 def api_search():
     auth_err = require_auth()
     if auth_err:
@@ -326,17 +364,31 @@ def api_search():
     if not has_permission("read"):
         return jsonify({"success": False, "error": "Permission denied."}), 403
 
-    root_info, err = get_authorized_root(request.args.get("root", 0))
-    if err:
-        return err
-
-    query = request.args.get("q", "").strip()
-    if not query:
-        return jsonify({"success": True, "results": []})
-
+    query = (request.args.get("query") or request.args.get("q") or "").strip()
     category = request.args.get("category", "")
-    results = search_files_recursive(root_info["id"], query, category_filter=category)
-    return jsonify({"success": True, "root_id": root_info["id"], "results": results})
+    root_arg = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id")
+
+    if root_arg is not None and str(root_arg).strip() != "":
+        root_info, err = get_authorized_root(root_arg)
+        if err:
+            return err
+        results = search_files_recursive(root_info["id"], query, category_filter=category)
+        return jsonify({"success": True, "root_id": root_info["id"], "results": results})
+
+    # If no root specified, search across all accessible roots
+    all_results = []
+    roots = get_roots()
+    for r in roots:
+        if can_access_root(r["id"]):
+            try:
+                res = search_files_recursive(r["id"], query, category_filter=category, max_results=50)
+                all_results.extend(res)
+                if len(all_results) >= 200:
+                    break
+            except Exception:
+                continue
+
+    return jsonify({"success": True, "results": all_results})
 
 
 @app.route("/api/folder", methods=["POST"])
@@ -575,14 +627,15 @@ def execute_download(root_id_arg, paths):
 
 
 @app.route("/api/download", methods=["GET", "POST"])
+@app.route("/api/files/download", methods=["GET", "POST"])
 @app.route("/api/batch_download", methods=["GET", "POST"])
 def api_download_endpoint():
-    root_id = request.args.get("root") if request.method == "GET" else None
-    paths = [request.args.get("path")] if request.method == "GET" and request.args.get("path") else None
-
-    if request.method == "POST":
+    if request.method == "GET":
+        root_id = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id", 0)
+        paths = [request.args.get("path")] if request.args.get("path") else None
+    else:
         data = request.get_json(silent=True) or request.form
-        root_id = data.get("root")
+        root_id = data.get("root") if data.get("root") is not None else data.get("root_id", 0)
         paths = data.get("paths")
         if not paths and data.get("path"):
             paths = [data.get("path")]
@@ -593,12 +646,12 @@ def api_download_endpoint():
 @app.route("/download", methods=["GET", "POST"])
 def download():
     """Preserves original download route with full support for single-file, folder, and batch downloads."""
-    root_id = request.args.get("root") if request.method == "GET" else None
-    paths = [request.args.get("path")] if request.method == "GET" and request.args.get("path") else None
-
-    if request.method == "POST":
+    if request.method == "GET":
+        root_id = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id", 0)
+        paths = [request.args.get("path")] if request.args.get("path") else None
+    else:
         data = request.get_json(silent=True) or request.form
-        root_id = data.get("root")
+        root_id = data.get("root") if data.get("root") is not None else data.get("root_id", 0)
         paths = data.get("paths")
         if not paths and data.get("path"):
             paths = [data.get("path")]
@@ -645,6 +698,8 @@ def api_properties():
 
 
 @app.route("/stream")
+@app.route("/api/stream")
+@app.route("/api/files/stream")
 def stream_file():
     auth_err = require_auth()
     if auth_err:
@@ -653,7 +708,8 @@ def stream_file():
     if not has_permission("stream"):
         return jsonify({"success": False, "error": "Permission denied: media streaming disabled."}), 403
 
-    root_info, err = get_authorized_root(request.args.get("root", 0))
+    root_arg = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id", 0)
+    root_info, err = get_authorized_root(root_arg)
     if err:
         return err
 
@@ -670,12 +726,15 @@ def stream_file():
 
 
 @app.route("/thumbnail")
+@app.route("/api/thumbnail")
+@app.route("/api/files/thumbnail")
 def image_thumbnail():
     auth_err = require_auth()
     if auth_err:
         return auth_err
 
-    root_info, err = get_authorized_root(request.args.get("root", 0))
+    root_arg = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id", 0)
+    root_info, err = get_authorized_root(root_arg)
     if err:
         return err
 
@@ -694,6 +753,7 @@ def image_thumbnail():
 
 
 @app.route("/preview")
+@app.route("/api/preview")
 def preview():
     """Preserves original preview route with safe content type and range support."""
     auth_err = require_auth()
@@ -703,7 +763,8 @@ def preview():
     if not has_permission("preview"):
         return jsonify({"success": False, "error": "Permission denied: preview disabled."}), 403
 
-    root_info, err = get_authorized_root(request.args.get("root", 0))
+    root_arg = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id", 0)
+    root_info, err = get_authorized_root(root_arg)
     if err:
         return err
 

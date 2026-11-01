@@ -242,10 +242,12 @@
           <div class="sheet-title">My Files</div>
         </div>
         <div class="sheet-header-right">
-          <button class="sheet-action-icon" onclick="PocketVault.refreshFiles()">🔄</button>
+          <button class="sheet-action-icon" onclick="PocketVault.loadRootsView()" title="Storage Locations">💾</button>
+          <button class="sheet-action-icon" onclick="PocketVault.refreshFiles()" title="Refresh">🔄</button>
         </div>
       </div>
       <div class="sheet-body">
+        <div class="storage-roots-pill-bar" id="files-roots-bar"></div>
         <div class="breadcrumbs-bar" id="files-breadcrumbs"></div>
         <div id="files-list-container"></div>
       </div>

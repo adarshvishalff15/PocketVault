@@ -7,6 +7,7 @@
 const PocketVault = {
   csrfToken: "",
   currentUser: null,
+  cachedRoots: [],
   activeWallpaper: null,
   activeSheet: null,
   currentRootId: 0,
@@ -371,6 +372,7 @@ const PocketVault = {
 
     switch (appName) {
       case "files":
+        this.loadRootsBar();
         this.loadDirectory(this.currentRootId, this.currentPath);
         break;
       case "gallery":
@@ -506,45 +508,153 @@ const PocketVault = {
     await this.loadDirectory(this.currentRootId, this.currentPath);
   },
 
+  async loadRootsBar() {
+    const bar = document.getElementById("files-roots-bar");
+    if (!bar) return;
+    try {
+      const res = await fetch("/api/roots");
+      const data = await res.json();
+      if (data.success && data.roots) {
+        this.cachedRoots = data.roots;
+        let html = "";
+        data.roots.forEach(r => {
+          const isActive = r.id === this.currentRootId;
+          let icon = "📁";
+          const nameLower = (r.name || "").toLowerCase();
+          if (nameLower.includes("internal") || nameLower.includes("phone")) icon = "📱";
+          else if (nameLower.includes("sd") || nameLower.includes("card") || nameLower.includes("drive")) icon = "💾";
+          else if (nameLower.includes("download")) icon = "📥";
+          else if (nameLower.includes("picture") || nameLower.includes("wallpaper")) icon = "🖼️";
+          else if (nameLower.includes("camera") || nameLower.includes("dcim")) icon = "📸";
+          else if (nameLower.includes("music") || nameLower.includes("audio")) icon = "🎵";
+          else if (nameLower.includes("video") || nameLower.includes("movie")) icon = "🎬";
+          else if (nameLower.includes("doc")) icon = "📄";
+          else if (nameLower.includes("home")) icon = "🏠";
+
+          html += `
+            <button class="storage-root-chip ${isActive ? 'active' : ''}" onclick="PocketVault.loadDirectory(${r.id}, '')">
+              <span>${icon}</span>
+              <span>${r.name}</span>
+            </button>
+          `;
+        });
+        bar.innerHTML = html;
+      }
+    } catch (e) {}
+  },
+
+  async loadRootsView() {
+    this.vibrate(20);
+    const list = document.getElementById("files-list-container");
+    const bc = document.getElementById("files-breadcrumbs");
+    if (!list) return;
+
+    if (bc) {
+      bc.innerHTML = `<span class="crumb-item" style="color:#f8fafc; font-weight:600;">Storage Locations</span>`;
+    }
+
+    list.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">Scanning device storage...</div>';
+
+    try {
+      const res = await fetch("/api/roots");
+      const data = await res.json();
+      if (!data.success || !data.roots || data.roots.length === 0) {
+        list.innerHTML = '<div style="color:#f43f5e; padding:20px;">No storage roots found.</div>';
+        return;
+      }
+
+      this.cachedRoots = data.roots;
+      this.loadRootsBar();
+
+      let html = '<div style="padding:4px 0 10px 0; font-size:11.5px; color:#94a3b8; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Storage Locations & Drives</div>';
+
+      data.roots.forEach(r => {
+        let icon = "📁";
+        const nameLower = (r.name || "").toLowerCase();
+        if (nameLower.includes("internal") || nameLower.includes("phone")) icon = "📱";
+        else if (nameLower.includes("sd") || nameLower.includes("card") || nameLower.includes("drive")) icon = "💾";
+        else if (nameLower.includes("download")) icon = "📥";
+        else if (nameLower.includes("picture") || nameLower.includes("wallpaper")) icon = "🖼️";
+        else if (nameLower.includes("camera") || nameLower.includes("dcim")) icon = "📸";
+        else if (nameLower.includes("music") || nameLower.includes("audio")) icon = "🎵";
+        else if (nameLower.includes("video") || nameLower.includes("movie")) icon = "🎬";
+        else if (nameLower.includes("doc")) icon = "📄";
+        else if (nameLower.includes("home")) icon = "🏠";
+
+        const storage = r.storage || {};
+        const metaText = storage.free_human && storage.total_human
+          ? `${storage.free_human} free of ${storage.total_human}`
+          : "Ready";
+        const pct = storage.percent_used || 0;
+
+        html += `
+          <div class="storage-root-card" onclick="PocketVault.loadDirectory(${r.id}, '')">
+            <div class="storage-root-card-icon">${icon}</div>
+            <div class="storage-root-card-info">
+              <div class="storage-root-card-title">${r.name}</div>
+              <div class="storage-root-card-meta">${metaText}</div>
+              ${storage.total ? `
+                <div class="storage-root-progress-bar">
+                  <div class="storage-root-progress-fill" style="width: ${pct}%"></div>
+                </div>
+              ` : ''}
+            </div>
+            <div style="font-size:16px; color:#94a3b8; margin-left:8px;">›</div>
+          </div>
+        `;
+      });
+
+      list.innerHTML = html;
+    } catch (e) {
+      list.innerHTML = '<div style="color:#f43f5e; padding:20px;">Failed to scan storage locations.</div>';
+    }
+  },
+
   async loadDirectory(rootId, path) {
-    this.currentRootId = rootId;
+    this.currentRootId = (rootId !== undefined && rootId !== null) ? rootId : (this.currentRootId || 0);
     this.currentPath = path || "";
 
     const list = document.getElementById("files-list-container");
     const bc = document.getElementById("files-breadcrumbs");
     if (!list) return;
 
+    this.loadRootsBar();
+
     list.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">Reading storage...</div>';
 
     try {
-      const res = await fetch(`/api/files/list?root_id=${rootId}&path=${encodeURIComponent(this.currentPath)}`);
+      const res = await fetch(`/api/files/list?root_id=${this.currentRootId}&path=${encodeURIComponent(this.currentPath)}`);
       const data = await res.json();
       if (!data.success) {
         list.innerHTML = `<div style="color:#f43f5e; padding:20px;">${data.error || "Cannot access folder"}</div>`;
         return;
       }
 
-      this.renderBreadcrumbs(bc, data.breadcrumbs, rootId);
+      this.renderBreadcrumbs(bc, data.breadcrumbs, this.currentRootId, data.root_name);
 
-      if ((!data.directories || data.directories.length === 0) && (!data.files || data.files.length === 0)) {
+      const directories = data.directories || (data.items ? data.items.filter(i => i.is_dir) : []);
+      const files = data.files || (data.items ? data.items.filter(i => !i.is_dir) : []);
+
+      if (directories.length === 0 && files.length === 0) {
         list.innerHTML = '<div style="text-align:center; padding:40px; color:#64748b;">Folder is empty</div>';
         return;
       }
 
       let html = "";
-      (data.directories || []).forEach(d => {
+      directories.forEach(d => {
         html += `
-          <div class="file-row" onclick="PocketVault.loadDirectory(${rootId}, '${d.rel_path.replace(/'/g, "\\'")}')">
+          <div class="file-row" onclick="PocketVault.loadDirectory(${this.currentRootId}, '${d.rel_path.replace(/'/g, "\\'")}')">
             <div class="file-icon-box" style="background:#0284c7;">📁</div>
             <div class="file-info-col">
               <div class="file-name">${d.name}</div>
-              <div class="file-meta">Folder • ${d.modified_human || ""}</div>
+              <div class="file-meta">Folder • ${d.modified_human || d.modified_str || ""}</div>
             </div>
+            <div style="font-size:16px; color:#94a3b8; margin-left:8px;">›</div>
           </div>
         `;
       });
 
-      (data.files || []).forEach(f => {
+      files.forEach(f => {
         const isImg = f.category === "image";
         const isAud = f.category === "audio";
         const isVid = f.category === "video";
@@ -553,14 +663,24 @@ const PocketVault = {
         if (isAud) icon = "🎵";
         if (isVid) icon = "🎬";
 
+        let iconHtml = `<div class="file-icon-box" style="background: rgba(255,255,255,0.08);">${icon}</div>`;
+        if (isImg) {
+          const thumbUrl = `/api/files/thumbnail?root_id=${this.currentRootId}&path=${encodeURIComponent(f.rel_path)}&size=100`;
+          iconHtml = `
+            <div class="file-icon-box" style="padding:0; overflow:hidden; background: rgba(255,255,255,0.04);">
+              <img src="${thumbUrl}" class="file-thumb-mini" loading="lazy" alt="${f.name}" onerror="this.onerror=null; this.parentNode.innerHTML='🖼️';" />
+            </div>
+          `;
+        }
+
         html += `
-          <div class="file-row" onclick="PocketVault.handleFileClick(${rootId}, '${f.rel_path.replace(/'/g, "\\'")}', '${f.category}', '${f.name.replace(/'/g, "\\'")}')">
-            <div class="file-icon-box" style="background: rgba(255,255,255,0.08);">${icon}</div>
+          <div class="file-row" onclick="PocketVault.handleFileClick(${this.currentRootId}, '${f.rel_path.replace(/'/g, "\\'")}', '${f.category}', '${f.name.replace(/'/g, "\\"')}')">
+            ${iconHtml}
             <div class="file-info-col">
               <div class="file-name">${f.name}</div>
-              <div class="file-meta">${f.size_human} • ${f.modified_human || ""}</div>
+              <div class="file-meta">${f.size_human} • ${f.modified_human || f.modified_str || ""}</div>
             </div>
-            <a href="/api/files/download?root_id=${rootId}&path=${encodeURIComponent(f.rel_path)}" class="file-dl-btn" download onclick="event.stopPropagation()">↓</a>
+            <a href="/api/files/download?root_id=${this.currentRootId}&path=${encodeURIComponent(f.rel_path)}" class="file-dl-btn" download onclick="event.stopPropagation()">↓</a>
           </div>
         `;
       });
@@ -571,12 +691,18 @@ const PocketVault = {
     }
   },
 
-  renderBreadcrumbs(el, crumbs, rootId) {
-    if (!el || !crumbs) return;
-    let html = `<span class="crumb-item" onclick="PocketVault.loadDirectory(${rootId}, '')">Roots</span>`;
-    crumbs.forEach(c => {
-      html += ` <span style="opacity:0.4;">›</span> <span class="crumb-item" onclick="PocketVault.loadDirectory(${rootId}, '${c.path.replace(/'/g, "\\'")}')">${c.name}</span>`;
-    });
+  renderBreadcrumbs(el, crumbs, rootId, rootName) {
+    if (!el) return;
+    let html = `<span class="crumb-item" onclick="PocketVault.loadRootsView()">Storage</span>`;
+    if (crumbs && crumbs.length > 0) {
+      crumbs.forEach((c, idx) => {
+        const isLast = idx === crumbs.length - 1;
+        const style = isLast ? 'style="color:#f8fafc; font-weight:600;"' : '';
+        html += ` <span style="opacity:0.4;">›</span> <span class="crumb-item" ${style} onclick="PocketVault.loadDirectory(${rootId}, '${c.path.replace(/'/g, "\\'")}')">${c.name}</span>`;
+      });
+    } else if (rootName) {
+      html += ` <span style="opacity:0.4;">›</span> <span class="crumb-item" style="color:#f8fafc; font-weight:600;" onclick="PocketVault.loadDirectory(${rootId}, '')">${rootName}</span>`;
+    }
     el.innerHTML = html;
   },
 

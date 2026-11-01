@@ -19,6 +19,11 @@ cleanup() {
 }
 trap cleanup INT TERM
 
+# Activate Python virtual environment if present
+if [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+fi
+
 # Run Python server on Port 8288
 if command -v python3 >/dev/null 2>&1; then
     python3 run.py --port 8288 "$@"

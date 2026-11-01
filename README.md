@@ -32,7 +32,7 @@ termux-setup-storage
 
 ### Step 2: Clone or Copy PocketVault
 ```bash
-git clone https://github.com/YOUR_USERNAME/PocketVault.git
+git clone https://github.com/adarshvishalff15/PocketVault.git
 cd PocketVault
 ```
 
@@ -59,25 +59,82 @@ Open the link on any phone, laptop, or tablet on the same Wi-Fi network!
 
 ---
 
-## 🐧 Quick Start on Linux / Kali NetHunter
+## 🐧 Installation & Setup on Kali Linux / Debian / Ubuntu / NetHunter
 
+### Prerequisites:
+Make sure Git and Python 3 are installed on your Kali system:
 ```bash
-git clone https://github.com/YOUR_USERNAME/PocketVault.git
+sudo apt update -y
+sudo apt install python3 python3-pip python3-venv git -y
+```
+
+### Option A: One-Step Automated Setup (Recommended)
+```bash
+# 1. Clone the repository
+git clone https://github.com/adarshvishalff15/PocketVault.git
 cd PocketVault
+
+# 2. Run automated installer (creates virtual environment & installs dependencies)
 bash install.sh
+
+# 3. Start PocketVault
 bash start.sh
 ```
 
+### Option B: Manual Setup
+```bash
+# 1. Clone the repository
+git clone https://github.com/adarshvishalff15/PocketVault.git
+cd PocketVault
+
+# 2. Create and activate a Python virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Install dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# 4. Launch PocketVault server
+python3 run.py --port 8288
+```
+> **Kali Firewall Tip**: If you are using `ufw` or `iptables`, allow port 8288 for LAN access:
+> ```bash
+> sudo ufw allow 8288/tcp
+> ```
+
 ---
 
-## 💻 Quick Start on Windows / Mac (Development & Testing)
+## 💻 Installation & Setup on Windows (10 / 11)
 
-### Windows PowerShell:
+### Prerequisites:
+1. Install **Python 3.10+** from [python.org](https://www.python.org/downloads/) (Make sure to check **"Add python.exe to PATH"** during installation).
+2. Install **Git for Windows** from [git-scm.com](https://git-scm.com/).
+
+### Option A: 1-Click Batch Setup (Easiest)
+1. Open PowerShell or Command Prompt and clone the repository:
+   ```cmd
+   git clone https://github.com/adarshvishalff15/PocketVault.git
+   cd PocketVault
+   ```
+2. Double-click **`install.bat`** (or run `install.bat` in terminal) to automatically install all dependencies.
+3. Double-click **`start.bat`** (or right-click `start.ps1` -> *Run with PowerShell*) to launch the server!
+
+### Option B: Windows PowerShell Setup
 ```powershell
+# 1. Clone the repository
+git clone https://github.com/adarshvishalff15/PocketVault.git
+cd PocketVault
+
+# 2. Install dependencies
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+
+# 3. Start the server
 python run.py --port 8288
 ```
-Or double-click `start.bat` / `start.ps1`.
+
+> **Windows Firewall Prompt**: When running for the first time, Windows Defender Firewall may prompt you to allow Python access. Check **Private networks** and click **Allow access** so other devices on your Wi-Fi can open PocketVault.
 
 ---
 

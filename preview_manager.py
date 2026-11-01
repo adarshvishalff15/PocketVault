@@ -177,6 +177,7 @@ def parse_docx(file_path: Path) -> dict:
 
         return {
             "success": True,
+            "status": "success",
             "filename": file_path.name,
             "elements": elements,
             "tables": tables_data,
@@ -233,6 +234,7 @@ def parse_pptx(file_path: Path) -> dict:
 
         return {
             "success": True,
+            "status": "success",
             "filename": file_path.name,
             "total_slides": len(slides_data),
             "slides": slides_data,
@@ -336,6 +338,7 @@ def inspect_zip_archive(file_path: Path) -> dict:
     Guards against Zip-Slip attacks and malicious decompression bombs.
     """
     import zipfile
+    file_path = Path(file_path)
     try:
         entries = []
         total_uncompressed = 0
@@ -358,11 +361,21 @@ def inspect_zip_archive(file_path: Path) -> dict:
                 except Exception:
                     pass
 
+                def _fmt_size(b):
+                    if b < 1024:
+                        return f"{b} B"
+                    for u in ("KB", "MB", "GB"):
+                        b /= 1024
+                        if b < 1024:
+                            return f"{b:.1f} {u}"
+                    return f"{b:.2f} TB"
+
                 entries.append({
                     "name": clean_name,
                     "filename": Path(clean_name).name,
                     "is_dir": is_dir,
                     "size": info.file_size,
+                    "size_human": _fmt_size(info.file_size) if not is_dir else "—",
                     "compressed_size": info.compress_size,
                     "ratio": round((1 - info.compress_size / info.file_size) * 100, 1) if info.file_size > 0 else 0,
                     "modified": mtime_str,
@@ -371,12 +384,24 @@ def inspect_zip_archive(file_path: Path) -> dict:
                 })
 
         entries.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
+        def _fmt_total(b):
+            if b < 1024:
+                return f"{b} B"
+            for u in ("KB", "MB", "GB"):
+                b /= 1024
+                if b < 1024:
+                    return f"{b:.1f} {u}"
+            return f"{b:.2f} TB"
+
         return {
             "success": True,
+            "status": "success",
             "filename": file_path.name,
             "total_entries": len(entries),
+            "total_files": len([e for e in entries if not e["is_dir"]]),
             "total_uncompressed_bytes": total_uncompressed,
-            "entries": entries,
+            "total_uncompressed_human": _fmt_total(total_uncompressed),
+            "entries": entries[:250],
         }
     except Exception as e:
         return {"success": False, "error": f"Failed to inspect zip archive: {str(e)}"}
@@ -412,6 +437,7 @@ def read_text_preview(file_path: Path, max_bytes: int = 500_000) -> dict:
 
         return {
             "success": True,
+            "status": "success",
             "filename": file_path.name,
             "content": text_content,
             "encoding": used_encoding,
@@ -435,6 +461,7 @@ def get_file_checksum(file_path: Path) -> dict:
         ext = file_path.suffix.lower()
         return {
             "success": True,
+            "status": "success",
             "filename": file_path.name,
             "size": stat.st_size,
             "created": datetime.fromtimestamp(stat.st_ctime).strftime("%Y-%m-%d %H:%M:%S"),

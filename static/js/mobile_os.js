@@ -352,6 +352,9 @@ const PocketVault = {
       case "music":
         this.loadMusic();
         break;
+      case "archives":
+        this.loadArchives();
+        break;
       case "apps":
         this.loadInstalledApps();
         break;
@@ -654,17 +657,11 @@ const PocketVault = {
 
       files.forEach(f => {
         const isImg = f.category === "image";
-        const isAud = f.category === "audio";
-        const isVid = f.category === "video";
-        let icon = "📄";
-        if (isImg) icon = "🖼️";
-        if (isAud) icon = "🎵";
-        if (isVid) icon = "🎬";
-
+        const icon = this.getFileIcon(f.category, f.extension);
         const encPath = encodeURIComponent(f.rel_path);
         const encName = encodeURIComponent(f.name);
 
-        let iconHtml = `<div class="file-icon-box" style="background: rgba(255,255,255,0.08);">${icon}</div>`;
+        let iconHtml = `<div class="file-icon-box" style="background: rgba(255,255,255,0.08); font-size:18px;">${icon}</div>`;
         if (isImg) {
           const thumbUrl = `/api/files/thumbnail?root_id=${this.currentRootId}&path=${encPath}&size=100`;
           iconHtml = `
@@ -672,16 +669,18 @@ const PocketVault = {
               <img src="${thumbUrl}" class="file-thumb-mini" loading="lazy" alt="${f.name}" onerror="this.onerror=null; this.parentNode.innerHTML='🖼️';" />
             </div>
           `;
+        } else if (f.category === "archive" || (f.extension && f.extension.toLowerCase() === ".zip")) {
+          iconHtml = `<div class="file-icon-box" style="background: rgba(236, 72, 153, 0.18); font-size:18px;">📦</div>`;
         }
 
         html += `
-          <div class="file-row" onclick="PocketVault.onFileClick(this)" data-root="${this.currentRootId}" data-path="${encPath}" data-cat="${f.category}" data-name="${encName}">
+          <div class="file-row" onclick="PocketVault.onFileClick(this)" data-root="${this.currentRootId}" data-path="${encPath}" data-cat="${f.category}" data-name="${encName}" data-size="${f.size_human || ''}">
             ${iconHtml}
             <div class="file-info-col">
               <div class="file-name">${f.name}</div>
               <div class="file-meta">${f.size_human} • ${f.modified_human || f.modified_str || ""}</div>
             </div>
-            <a href="/api/files/download?root_id=${this.currentRootId}&path=${encPath}" class="file-dl-btn" download onclick="event.stopPropagation()">↓</a>
+            <a href="/api/files/download?root_id=${this.currentRootId}&path=${encPath}" class="file-dl-btn" download onclick="event.stopPropagation()" title="Download file">↓</a>
           </div>
         `;
       });
@@ -703,7 +702,8 @@ const PocketVault = {
     const relPath = decodeURIComponent(el.dataset.path || "");
     const category = el.dataset.cat || "";
     const name = decodeURIComponent(el.dataset.name || "");
-    this.handleFileClick(rootId, relPath, category, name);
+    const size = el.dataset.size || "";
+    this.handleFileClick(rootId, relPath, category, name, size);
   },
 
   onCrumbClick(el) {
@@ -728,17 +728,148 @@ const PocketVault = {
     el.innerHTML = html;
   },
 
-  handleFileClick(rootId, relPath, category, name) {
+  handleFileClick(rootId, relPath, category, name, sizeHuman) {
+    const ext = name.includes(".") ? "." + name.split(".").pop().toLowerCase() : "";
     if (category === "image") {
       this.openLightbox(`/api/files/download?root_id=${rootId}&path=${encodeURIComponent(relPath)}`, name);
     } else if (category === "audio") {
       this.playMediaStream(rootId, relPath, "audio", name);
     } else if (category === "video") {
       this.playMediaStream(rootId, relPath, "video", name);
+    } else if (category === "archive" || ext === ".zip" || ext === ".tar" || ext === ".gz" || ext === ".7z" || ext === ".rar" || ext === ".apk") {
+      this.openZipModal(rootId, relPath, name, sizeHuman);
     } else {
       window.open(`/api/files/download?root_id=${rootId}&path=${encodeURIComponent(relPath)}`, "_blank");
     }
   },
+
+  // --------------------------------------------------------------------------
+  // Universal File Icon & Category Engine
+  // --------------------------------------------------------------------------
+  getFileIcon(cat, ext) {
+    const e = (ext || "").toLowerCase();
+    if (cat === "image") return "🖼️";
+    if (cat === "video") return "🎬";
+    if (cat === "audio") return "🎵";
+    if (cat === "archive" || e === ".zip" || e === ".tar" || e === ".gz" || e === ".7z" || e === ".rar" || e === ".iso") return "📦";
+    if (cat === "executable" || e === ".apk") return "📱";
+    if (e === ".exe" || e === ".msi" || e === ".deb" || e === ".rpm") return "⚙️";
+    if (cat === "pdf" || e === ".pdf") return "📕";
+    if (cat === "spreadsheet" || e === ".xlsx" || e === ".xls" || e === ".csv") return "📊";
+    if (cat === "presentation" || e === ".pptx" || e === ".ppt") return "📽️";
+    if (cat === "document" || e === ".docx" || e === ".doc") return "📄";
+    if (cat === "text" || e === ".txt" || e === ".md" || e === ".log") return "📝";
+    if (e === ".py" || e === ".js" || e === ".ts" || e === ".html" || e === ".css" || e === ".sh" || e === ".bat" || e === ".json" || e === ".xml") return "💻";
+    return "📄";
+  },
+
+  openDownloads() {
+    this.vibrate(20);
+    const roots = this.cachedRoots || [];
+    const dlRoot = roots.find(r => (r.name || "").toLowerCase().includes("download"));
+    if (dlRoot) {
+      this.openApp("files");
+      this.loadDirectory(dlRoot.id, "");
+    } else {
+      this.openApp("files");
+    }
+  },
+
+  async openZipModal(rootId, relPath, name, sizeHuman) {
+    this.vibrate(20);
+    const modal = document.getElementById("zip-inspector-modal");
+    const titleEl = document.getElementById("zip-modal-title");
+    const summaryEl = document.getElementById("zip-modal-summary");
+    const entriesList = document.getElementById("zip-entries-list");
+    const dlBtn = document.getElementById("zip-modal-download-btn");
+
+    if (!modal) return;
+
+    const downloadUrl = `/api/files/download?root_id=${rootId}&path=${encodeURIComponent(relPath)}`;
+    if (titleEl) titleEl.textContent = name;
+    if (dlBtn) {
+      dlBtn.href = downloadUrl;
+      dlBtn.download = name;
+      dlBtn.innerHTML = `<span>📥 Download ${name} (${sizeHuman || "Archive"})</span>`;
+    }
+
+    if (summaryEl) summaryEl.textContent = "Reading archive contents...";
+    if (entriesList) entriesList.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;">Inspecting ZIP structure...</div>';
+    modal.style.display = "flex";
+
+    try {
+      const res = await fetch(`/api/preview/zip?root_id=${rootId}&path=${encodeURIComponent(relPath)}`);
+      const data = await res.json();
+      if (data.success && data.entries) {
+        if (summaryEl) {
+          summaryEl.textContent = `${data.total_files || data.entries.length} items • ${data.total_uncompressed_human || ""} uncompressed`;
+        }
+        let html = "";
+        data.entries.forEach(item => {
+          const isDir = item.is_dir;
+          const icon = isDir ? "📁" : "📄";
+          html += `
+            <div class="file-row" style="margin-bottom:6px; padding:8px 12px;">
+              <div class="file-icon-box" style="width:34px; height:34px; font-size:14px; background:${isDir ? '#0284c7' : 'rgba(255,255,255,0.06)'};">${icon}</div>
+              <div class="file-info-col">
+                <div class="file-name" style="font-size:13px;">${item.name}</div>
+                <div class="file-meta">${isDir ? "Folder" : (item.size_human || "")}</div>
+              </div>
+            </div>
+          `;
+        });
+        if (entriesList) entriesList.innerHTML = html || '<div style="color:#64748b; padding:10px;">Archive is empty.</div>';
+      } else {
+        if (summaryEl) summaryEl.textContent = sizeHuman ? `File size: ${sizeHuman}` : "Archive ready";
+        if (entriesList) entriesList.innerHTML = '<div style="color:#94a3b8; padding:10px; font-size:12.5px;">Click the download button above to download and extract this archive on your device.</div>';
+      }
+    } catch (e) {
+      if (summaryEl) summaryEl.textContent = sizeHuman ? `File size: ${sizeHuman}` : "Archive ready";
+      if (entriesList) entriesList.innerHTML = '<div style="color:#94a3b8; padding:10px; font-size:12.5px;">Click the download button above to download and extract this archive on your device.</div>';
+    }
+  },
+
+  closeZipModal() {
+    const modal = document.getElementById("zip-inspector-modal");
+    if (modal) modal.style.display = "none";
+  },
+
+  async loadArchives() {
+    this.vibrate(20);
+    const list = document.getElementById("archives-list-container");
+    if (!list) return;
+    list.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">Scanning for ZIP & archive files...</div>';
+
+    try {
+      const res = await fetch("/api/files/search?query=.&category=archive");
+      const data = await res.json();
+      if (!data.results || data.results.length === 0) {
+        list.innerHTML = '<div style="text-align:center; padding:40px; color:#64748b;">No ZIP or archive files found</div>';
+        return;
+      }
+      let html = "";
+      data.results.forEach(arch => {
+        const encPath = encodeURIComponent(arch.rel_path);
+        const encName = encodeURIComponent(arch.name);
+        const icon = (arch.extension === ".apk") ? "📱" : "📦";
+        html += `
+          <div class="file-row" onclick="PocketVault.onFileClick(this)" data-root="${arch.root_id || 0}" data-path="${encPath}" data-cat="${arch.category}" data-name="${encName}" data-size="${arch.size_human || ''}">
+            <div class="file-icon-box" style="background: rgba(236, 72, 153, 0.18); font-size:18px;">${icon}</div>
+            <div class="file-info-col">
+              <div class="file-name">${arch.name}</div>
+              <div class="file-meta">${arch.size_human} • ${arch.root_name || "Storage"}</div>
+            </div>
+            <a href="/api/files/download?root_id=${arch.root_id || 0}&path=${encPath}" class="file-dl-btn" download onclick="event.stopPropagation()" title="Download file">↓</a>
+          </div>
+        `;
+      });
+      list.innerHTML = html;
+    } catch (e) {
+      list.innerHTML = '<div style="color:#f43f5e; padding:20px;">Could not load archives.</div>';
+    }
+  },
+
+
 
   // --------------------------------------------------------------------------
   // Gallery

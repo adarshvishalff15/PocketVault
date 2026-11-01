@@ -366,6 +366,8 @@ def api_search():
 
     query = (request.args.get("query") or request.args.get("q") or "").strip()
     category = request.args.get("category", "")
+    if category.lower() in ("zip", "archives"):
+        category = "archive"
     root_arg = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id")
 
     if root_arg is not None and str(root_arg).strip() != "":
@@ -389,6 +391,8 @@ def api_search():
             if category == "audio" and any(k in name for k in ("music", "audio", "sound", "download")):
                 return 0
             if category == "document" and any(k in name for k in ("document", "download", "desktop", "home")):
+                return 0
+            if category in ("archive", "zip", "package") and any(k in name for k in ("download", "document", "desktop", "home", "internal")):
                 return 0
             if r.get("type") == "drive":
                 return 2
@@ -684,7 +688,8 @@ def api_properties():
     if auth_err:
         return auth_err
 
-    root_info, err = get_authorized_root(request.args.get("root", 0))
+    root_arg = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id", 0)
+    root_info, err = get_authorized_root(root_arg)
     if err:
         return err
 
@@ -813,7 +818,8 @@ def api_preview_docx():
     if auth_err:
         return auth_err
 
-    root_info, err = get_authorized_root(request.args.get("root", 0))
+    root_arg = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id", 0)
+    root_info, err = get_authorized_root(root_arg)
     if err:
         return err
 
@@ -831,7 +837,8 @@ def api_preview_pptx():
     if auth_err:
         return auth_err
 
-    root_info, err = get_authorized_root(request.args.get("root", 0))
+    root_arg = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id", 0)
+    root_info, err = get_authorized_root(root_arg)
     if err:
         return err
 
@@ -849,7 +856,8 @@ def api_preview_spreadsheet():
     if auth_err:
         return auth_err
 
-    root_info, err = get_authorized_root(request.args.get("root", 0))
+    root_arg = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id", 0)
+    root_info, err = get_authorized_root(root_arg)
     if err:
         return err
 
@@ -873,7 +881,8 @@ def api_preview_zip():
     if auth_err:
         return auth_err
 
-    root_info, err = get_authorized_root(request.args.get("root", 0))
+    root_arg = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id", 0)
+    root_info, err = get_authorized_root(root_arg)
     if err:
         return err
 
@@ -891,7 +900,8 @@ def api_preview_text():
     if auth_err:
         return auth_err
 
-    root_info, err = get_authorized_root(request.args.get("root", 0))
+    root_arg = request.args.get("root") if request.args.get("root") is not None else request.args.get("root_id", 0)
+    root_info, err = get_authorized_root(root_arg)
     if err:
         return err
 

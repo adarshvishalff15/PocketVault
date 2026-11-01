@@ -241,7 +241,8 @@ def search_files_recursive(
 
                     ext = candidate.suffix.lower()
                     cat = get_file_category(ext)
-                    if category_filter and category_filter != "all" and cat != category_filter:
+                    target_filter = "archive" if category_filter in ("zip", "archive") else category_filter
+                    if category_filter and category_filter != "all" and cat != target_filter:
                         continue
 
                     stat = candidate.stat()

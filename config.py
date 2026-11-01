@@ -54,8 +54,14 @@ MEDIA_EXTENSIONS = {
         ".css", ".js", ".ts", ".sh", ".bat", ".ps1", ".sql", ".rs",
         ".go", ".php", ".rb", ".toml", ".env", ".gitignore",
     },
-    "archive": {".zip", ".tar", ".gz", ".7z", ".rar"},
-    "executable": {".exe", ".msi", ".dll", ".apk"},
+    "archive": {
+        ".zip", ".tar", ".gz", ".tgz", ".bz2", ".tbz2", ".xz", ".txz",
+        ".7z", ".rar", ".iso", ".zst", ".lz4", ".lzma", ".cab"
+    },
+    "executable": {
+        ".apk", ".exe", ".msi", ".dll", ".deb", ".rpm", ".dmg", ".pkg",
+        ".appimage", ".bin", ".run", ".jar", ".war"
+    },
 }
 
 

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#090d16" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>{{ app_name }} - Mobile Personal Cloud</title>
+  
+  <link rel="stylesheet" href="/static/css/mobile_os.css?v=1" />
+  <link rel="stylesheet" href="/static/css/mobile_sheets.css?v=1" />
+</head>
+<body>
+
+  <!-- Dynamic Phone Wallpaper Layer -->
+  <div id="wallpaper-backdrop"></div>
+  <div id="wallpaper-overlay"></div>
+
+  <!-- Mobile Viewport Frame -->
+  <div id="mobile-viewport">
+
+    <!-- Mobile Top Status Bar -->
+    <header class="mobile-status-bar">
+      <div class="status-left">
+        <span id="status-time-display">15:30</span>
+        <span style="font-size: 11px; opacity: 0.85;">• 5G</span>
+      </div>
+      <div class="status-right">
+        <span class="status-pill">READ-ONLY</span>
+        <div class="battery-indicator">
+          <span id="status-battery-pct">88%</span>
+          <span id="status-battery-icon">🔋</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Mobile Home Screen (App Launcher) -->
+    <main id="home-screen">
+      <!-- Ambient Time & Host Info Widget -->
+      <section class="ambient-widget" onclick="PocketVault.openApp('settings')">
+        <div class="ambient-time" id="ambient-time-display">15:30</div>
+        <div class="ambient-date" id="ambient-date-display">Sunday, November 1</div>
+        <div class="device-badge-pill">
+          <span class="dot"></span>
+          <span>Galaxy S24 FE • PocketVault (8288)</span>
+        </div>
+      </section>
+
+      <!-- Storage Summary Bar -->
+      <section class="storage-summary-card">
+        <div class="storage-summary-header">
+          <span>Internal Storage</span>
+          <span id="storage-text-summary">Scanning...</span>
+        </div>
+        <div class="storage-progress-track">
+          <div class="storage-progress-bar" id="storage-progress-bar" style="width: 45%;"></div>
+        </div>
+      </section>
+
+      <!-- App Grid (Android One UI Squircles) -->
+      <section class="app-grid">
+        <div class="app-item" onclick="PocketVault.openApp('files')">
+          <div class="app-squircle icon-files">📁</div>
+          <div class="app-label">My Files</div>
+        </div>
+        <div class="app-item" onclick="PocketVault.openApp('gallery')">
+          <div class="app-squircle icon-gallery">🖼️</div>
+          <div class="app-label">Gallery</div>
+        </div>
+        <div class="app-item" onclick="PocketVault.openApp('video')">
+          <div class="app-squircle icon-video">🎬</div>
+          <div class="app-label">Videos</div>
+        </div>
+        <div class="app-item" onclick="PocketVault.openApp('docs')">
+          <div class="app-squircle icon-docs">📄</div>
+          <div class="app-label">Documents</div>
+        </div>
+        <div class="app-item" onclick="PocketVault.openApp('music')">
+          <div class="app-squircle icon-music">🎵</div>
+          <div class="app-label">Music</div>
+        </div>
+        <div class="app-item" onclick="PocketVault.openApp('apps')">
+          <div class="app-squircle icon-apps">📱</div>
+          <div class="app-label">Apps</div>
+        </div>
+        <div class="app-item" onclick="PocketVault.openApp('wallpaper')">
+          <div class="app-squircle icon-wall">🎨</div>
+          <div class="app-label">Wallpaper</div>
+        </div>
+        <div class="app-item" onclick="PocketVault.openApp('settings')">
+          <div class="app-squircle icon-settings">⚙️</div>
+          <div class="app-label">Settings</div>
+        </div>
+      </section>
+
+      <!-- Quick Search Pill -->
+      <div class="quick-search-pill" onclick="PocketVault.openApp('files')">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" placeholder="Search phone files, photos, media..." readonly />
+      </div>
+    </main>
+
+    <!-- Mobile Navigation Bar (Bottom 3-Button) -->
+    <nav class="mobile-nav-bar">
+      <button class="nav-button" onclick="PocketVault.closeActiveSheet()" title="Back">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+      <button class="nav-button" onclick="PocketVault.goHome()" title="Home">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9"></circle>
+        </svg>
+      </button>
+      <button class="nav-button" onclick="PocketVault.openApp('settings')" title="Vault Info">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <line x1="4" y1="6" x2="20" y2="6"></line>
+          <line x1="4" y1="12" x2="20" y2="12"></line>
+          <line x1="4" y1="18" x2="20" y2="18"></line>
+        </svg>
+      </button>
+    </nav>
+
+    <!-- ---------------------------------------------------------------------- -->
+    <!-- App Sheets (Fullscreen Mobile Views)                                   -->
+    <!-- ---------------------------------------------------------------------- -->
+
+    <!-- My Files Sheet -->
+    <section class="mobile-app-sheet" id="sheet-files">
+      <div class="sheet-header">
+        <div class="sheet-header-left">
+          <button class="sheet-back-btn" onclick="PocketVault.closeActiveSheet()">‹</button>
+          <div class="sheet-title">My Files</div>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <div class="breadcrumbs-bar" id="files-breadcrumbs"></div>
+        <div id="files-list-container"></div>
+      </div>
+    </section>
+
+    <!-- Gallery Sheet -->
+    <section class="mobile-app-sheet" id="sheet-gallery">
+      <div class="sheet-header">
+        <div class="sheet-header-left">
+          <button class="sheet-back-btn" onclick="PocketVault.closeActiveSheet()">‹</button>
+          <div class="sheet-title">Gallery</div>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <div class="gallery-grid" id="gallery-grid-container"></div>
+      </div>
+    </section>
+
+    <!-- Videos Sheet -->
+    <section class="mobile-app-sheet" id="sheet-video">
+      <div class="sheet-header">
+        <div class="sheet-header-left">
+          <button class="sheet-back-btn" onclick="PocketVault.closeActiveSheet()">‹</button>
+          <div class="sheet-title">Video Library</div>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <div id="video-list-container"></div>
+      </div>
+    </section>
+
+    <!-- Documents Sheet -->
+    <section class="mobile-app-sheet" id="sheet-docs">
+      <div class="sheet-header">
+        <div class="sheet-header-left">
+          <button class="sheet-back-btn" onclick="PocketVault.closeActiveSheet()">‹</button>
+          <div class="sheet-title">Documents</div>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <div id="docs-list-container"></div>
+      </div>
+    </section>
+
+    <!-- Music Sheet -->
+    <section class="mobile-app-sheet" id="sheet-music">
+      <div class="sheet-header">
+        <div class="sheet-header-left">
+          <button class="sheet-back-btn" onclick="PocketVault.closeActiveSheet()">‹</button>
+          <div class="sheet-title">Music</div>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <div id="music-list-container"></div>
+      </div>
+    </section>
+
+    <!-- Installed Apps Sheet -->
+    <section class="mobile-app-sheet" id="sheet-apps">
+      <div class="sheet-header">
+        <div class="sheet-header-left">
+          <button class="sheet-back-btn" onclick="PocketVault.closeActiveSheet()">‹</button>
+          <div class="sheet-title">Installed Apps</div>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <div id="apps-list-container"></div>
+      </div>
+    </section>
+
+    <!-- Wallpaper Picker Sheet -->
+    <section class="mobile-app-sheet" id="sheet-wallpaper">
+      <div class="sheet-header">
+        <div class="sheet-header-left">
+          <button class="sheet-back-btn" onclick="PocketVault.closeActiveSheet()">‹</button>
+          <div class="sheet-title">Phone Wallpaper</div>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <div id="wallpaper-grid-container"></div>
+      </div>
+    </section>
+
+    <!-- Settings Sheet -->
+    <section class="mobile-app-sheet" id="sheet-settings">
+      <div class="sheet-header">
+        <div class="sheet-header-left">
+          <button class="sheet-back-btn" onclick="PocketVault.closeActiveSheet()">‹</button>
+          <div class="sheet-title">Vault Settings</div>
+        </div>
+      </div>
+      <div class="sheet-body" style="display:flex; flex-direction:column; gap:16px;">
+        <div class="file-row">
+          <div class="file-icon-box" style="background:#0284c7;">🌐</div>
+          <div class="file-info-col">
+            <div class="file-name">Port</div>
+            <div class="file-meta" id="setting-port">8288</div>
+          </div>
+        </div>
+        <div class="file-row">
+          <div class="file-icon-box" style="background:#10b981;">🛡️</div>
+          <div class="file-info-col">
+            <div class="file-name">Safety Mode</div>
+            <div class="file-meta" id="setting-mode">READ-ONLY v1.0</div>
+          </div>
+        </div>
+        <div class="file-row">
+          <div class="file-icon-box" style="background:#8b5cf6;">📱</div>
+          <div class="file-info-col">
+            <div class="file-name">Platform Environment</div>
+            <div class="file-meta" id="setting-env">Detecting...</div>
+          </div>
+        </div>
+        <button class="login-submit-btn" onclick="PocketVault.showQRCode()" style="margin-top:10px;">
+          Show Connection Link
+        </button>
+        <button class="login-submit-btn" onclick="PocketVault.handleLogout()" style="background:#ef4444; margin-top:6px;">
+          Lock & Sign Out
+        </button>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------------------- -->
+    <!-- Modals (Lightbox & Streaming Player)                                   -->
+    <!-- ---------------------------------------------------------------------- -->
+
+    <!-- Photo Lightbox -->
+    <div class="media-lightbox-overlay" id="media-lightbox" onclick="PocketVault.closeLightbox()">
+      <button class="lightbox-close-btn" onclick="PocketVault.closeLightbox()">✕</button>
+      <div class="lightbox-content-box" onclick="event.stopPropagation()">
+        <img id="lightbox-img" src="" alt="Photo Preview" />
+        <div class="lightbox-caption-text" id="lightbox-caption"></div>
+      </div>
+    </div>
+
+    <!-- Video/Audio Stream Player Modal -->
+    <div class="stream-player-overlay" id="stream-player-modal">
+      <div class="stream-player-header">
+        <span id="stream-video-title" style="font-weight:600; font-size:14px;">Playing</span>
+        <button class="sheet-back-btn" onclick="PocketVault.closePlayerModal()">✕</button>
+      </div>
+      <div class="stream-player-video-box">
+        <video id="main-stream-video" controls playsinline controlslist="nodownload"></video>
+      </div>
+    </div>
+
+    <!-- ---------------------------------------------------------------------- -->
+    <!-- Mobile Login Overlay                                                   -->
+    <!-- ---------------------------------------------------------------------- -->
+    <div id="login-overlay">
+      <div class="login-card">
+        <div class="login-icon-badge">🔒</div>
+        <h2 class="login-title" id="login-card-title">PocketVault</h2>
+        <p class="login-subtitle" id="login-card-subtitle">Personal Mobile File Server</p>
+
+        <form id="login-form" style="width: 100%;">
+          <div class="form-group">
+            <input type="text" id="login-username" class="form-input" placeholder="Username" required autofocus />
+          </div>
+          <div class="form-group">
+            <input type="password" id="login-password" class="form-input" placeholder="Password" required />
+          </div>
+          <div id="login-error-msg" style="color: #f43f5e; font-size: 12.5px; margin-bottom: 12px; text-align: center;"></div>
+          <button type="submit" class="login-submit-btn">Unlock Vault</button>
+        </form>
+
+        <div class="login-security-tag">
+          <span>✓</span>
+          <span>Read-Only v1.0 • Port 8288 • Local Wi-Fi</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/static/js/mobile_os.js?v=1"></script>
+</body>
+</html>

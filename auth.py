@@ -1,7 +1,7 @@
-"""Authentication and user management module.
+"""Authentication and user management module for PocketVault.
 
 Handles secure password hashing, user storage, session tracking,
-role-based permissions, and the first-run administrator wizard.
+role-based permissions, and administrator provisioning.
 """
 
 from datetime import datetime, timezone
@@ -14,6 +14,7 @@ from config import DATA_DIR, ENV_USER, ENV_PASSWORD
 from security import audit_log
 
 USERS_FILE = DATA_DIR / "users.json"
+DATA_DIR.mkdir(exist_ok=True, parents=True)
 
 DEFAULT_PERMISSIONS = {
     "admin": {
@@ -61,37 +62,46 @@ def _load_users() -> dict[str, dict]:
         return {}
     try:
         with open(USERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
     except Exception:
         return {}
 
 
 def _save_users(users: dict[str, dict]):
     """Save users database safely to disk."""
+    DATA_DIR.mkdir(exist_ok=True, parents=True)
     temp_file = USERS_FILE.with_suffix(".tmp")
-    with open(temp_file, "w", encoding="utf-8") as f:
-        json.dump(users, f, indent=2)
-    temp_file.replace(USERS_FILE)
+    try:
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(users, f, indent=2)
+        os.replace(str(temp_file), str(USERS_FILE))
+    except Exception:
+        # Fallback direct write
+        with open(USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(users, f, indent=2)
 
 
 def init_auth():
-    """Initialize auth system. If environment credentials exist and users.json is empty, auto-seed."""
+    """Initialize auth system. Ensures default admin user is seeded if configured."""
     users = _load_users()
-    if not users and ENV_PASSWORD:
-        # Auto-seed from environment variables
+    clean_env_user = (ENV_USER or "vishal").strip().lower()
+
+    # If users database doesn't have the configured admin user and ENV_PASSWORD is set, seed it
+    if clean_env_user not in users and ENV_PASSWORD:
         admin_user = {
-            "username": ENV_USER,
+            "username": clean_env_user,
             "password_hash": generate_password_hash(ENV_PASSWORD),
-            "display_name": ENV_USER.capitalize(),
+            "display_name": clean_env_user.capitalize(),
             "role": "admin",
             "permissions": DEFAULT_PERMISSIONS["admin"].copy(),
             "allowed_roots": ["*"],
             "created_at": datetime.now(timezone.utc).isoformat(),
             "disabled": False,
         }
-        users[ENV_USER] = admin_user
+        users[clean_env_user] = admin_user
         _save_users(users)
-        audit_log("USER_INIT", ENV_USER, "SUCCESS", "Initialized default admin user from environment variables")
+        audit_log("USER_INIT", clean_env_user, "SUCCESS", "Initialized default admin user from configuration")
 
 
 def is_setup_needed() -> bool:
@@ -101,11 +111,15 @@ def is_setup_needed() -> bool:
 
 
 def get_user(username: str) -> dict | None:
+    """Look up user by case-insensitive username."""
+    if not username:
+        return None
     users = _load_users()
-    return users.get(username)
+    return users.get(username.strip().lower())
 
 
 def list_users() -> list[dict]:
+    """Return list of all registered users without password hashes."""
     users = _load_users()
     sanitized = []
     for u in users.values():
@@ -123,7 +137,7 @@ def create_user(
     permissions: dict | None = None,
     allowed_roots: list | None = None,
 ) -> tuple[bool, str]:
-    username = username.strip().lower()
+    username = (username or "").strip().lower()
     if not username or len(username) < 3:
         return False, "Username must be at least 3 characters."
     if not password or len(password) < 4:
@@ -159,6 +173,7 @@ def update_user(
     allowed_roots: list | None = None,
     disabled: bool | None = None,
 ) -> tuple[bool, str]:
+    username = (username or "").strip().lower()
     users = _load_users()
     if username not in users:
         return False, "User not found."
@@ -167,8 +182,8 @@ def update_user(
     if display_name is not None:
         user["display_name"] = display_name.strip()
     if password:
-        if len(password) < 6:
-            return False, "Password must be at least 6 characters."
+        if len(password) < 4:
+            return False, "Password must be at least 4 characters."
         user["password_hash"] = generate_password_hash(password)
     if role is not None:
         user["role"] = role
@@ -184,11 +199,12 @@ def update_user(
 
 
 def delete_user(username: str) -> tuple[bool, str]:
+    username = (username or "").strip().lower()
     users = _load_users()
     if username not in users:
         return False, "User not found."
 
-    # Prevent deleting the last admin
+    # Prevent deleting the last active admin
     admins = [u for u in users.values() if u.get("role") == "admin" and not u.get("disabled")]
     if len(admins) <= 1 and users[username].get("role") == "admin":
         return False, "Cannot delete the sole active administrator."
@@ -199,17 +215,18 @@ def delete_user(username: str) -> tuple[bool, str]:
 
 
 def authenticate(username: str, password: str) -> tuple[bool, dict | None, str]:
-    """Authenticates username and password. Returns (success, user_dict, error_msg)."""
-    username = username.strip().lower()
+    """Authenticates username and password case-insensitively. Returns (success, user_dict, error_msg)."""
+    clean_username = (username or "").strip().lower()
+    clean_env_user = (ENV_USER or "vishal").strip().lower()
     users = _load_users()
 
-    # If database is empty but environment credentials match
-    if not users and ENV_PASSWORD:
-        if username == ENV_USER.lower() and password == ENV_PASSWORD:
+    # If users database doesn't have the account, but it matches environment credentials
+    if clean_username not in users and ENV_PASSWORD:
+        if clean_username == clean_env_user and password == ENV_PASSWORD:
             init_auth()
             users = _load_users()
 
-    user = users.get(username)
+    user = users.get(clean_username)
     if not user:
         return False, None, "Invalid username or password."
 
@@ -227,7 +244,7 @@ def get_current_user() -> dict | None:
     username = session.get("username")
     if not username:
         return None
-    user = get_user(username)
+    user = get_user(str(username).strip().lower())
     if not user or user.get("disabled"):
         return None
     return user
@@ -251,6 +268,6 @@ def can_access_root(root_id: int) -> bool:
     if user.get("role") == "admin":
         return True
     allowed = user.get("allowed_roots", ["*"])
-    if "*" in allowed or str(root_id) in [str(x) for x in allowed] or root_id in allowed:
+    if "*" in allowed:
         return True
-    return False
+    return root_id in allowed or str(root_id) in [str(x) for x in allowed]

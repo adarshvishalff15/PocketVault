@@ -14,7 +14,12 @@ import mimetypes
 import os
 import re
 from flask import Response, request
-from PIL import Image
+try:
+    from PIL import Image
+    HAS_PIL = True
+except ImportError:
+    Image = None
+    HAS_PIL = False
 from config import DATA_DIR, get_file_category
 
 # Cache directory for image thumbnails
@@ -83,6 +88,12 @@ def get_image_thumbnail_data(file_path: Path, max_size: tuple[int, int] = (256, 
 
     if cache_file.exists():
         return cache_file.read_bytes()
+
+    if not HAS_PIL or Image is None:
+        try:
+            return file_path.read_bytes()
+        except Exception:
+            return b""
 
     with Image.open(file_path) as img:
         # Convert RGBA to RGB for webp if needed

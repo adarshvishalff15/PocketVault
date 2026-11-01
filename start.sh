@@ -19,8 +19,8 @@ cleanup() {
 }
 trap cleanup INT TERM
 
-# Activate Python virtual environment if present
-if [ -f "venv/bin/activate" ]; then
+# Activate Python virtual environment if present (except on Termux where system python holds native packages)
+if [ -f "venv/bin/activate" ] && [ ! -d "/data/data/com.termux" ] && [ -z "$TERMUX_VERSION" ]; then
     source venv/bin/activate
 fi
 
@@ -35,4 +35,3 @@ else
 fi
 
 cleanup
-

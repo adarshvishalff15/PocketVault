@@ -72,13 +72,15 @@ _LAST_ROOTS_CHECK = 0.0
 
 
 def is_android_environment() -> bool:
-    """Check whether we are running on an Android device (Termux / PRoot)."""
+    """Check whether we are running on an Android device (Termux / PRoot / Kali NetHunter)."""
     return (
         os.path.exists("/sdcard")
         or os.path.exists("/storage/emulated/0")
         or "TERMUX_VERSION" in os.environ
         or "ANDROID_ROOT" in os.environ
         or Path.home().joinpath("storage").is_dir()
+        or os.path.exists("/data/data/com.termux")
+        or ("PREFIX" in os.environ and "com.termux" in os.environ["PREFIX"])
     )
 
 

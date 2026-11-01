@@ -1,11 +1,11 @@
-"""Security module for the Windows 11 Remote File Server.
+"""Security module for PocketVault.
 
 Provides strict path canonicalization, directory traversal prevention,
 CSRF token validation, brute-force rate-limiting, and structured audit logging.
 """
 
 from datetime import datetime, timezone, timedelta
-from flask import request, session, abort
+from flask import request, session, has_request_context
 from pathlib import Path
 import json
 import os
@@ -15,6 +15,7 @@ from config import DATA_DIR, MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION_MINUTES
 
 # Audit log path
 AUDIT_LOG_FILE = DATA_DIR / "audit.log"
+DATA_DIR.mkdir(exist_ok=True, parents=True)
 
 # Windows reserved device names that must never be created or referenced
 WINDOWS_RESERVED_NAMES = {
@@ -29,7 +30,7 @@ _LOCKOUTS = {}
 
 
 def sanitize_filename(filename: str) -> str:
-    """Sanitizes filename for safe creation on Windows and Linux filesystems.
+    """Sanitizes filename for safe creation on Windows, Android, and Linux filesystems.
     
     Prevents path traversal characters, control characters, and Windows reserved names.
     """
@@ -45,7 +46,7 @@ def sanitize_filename(filename: str) -> str:
     # Disallow Windows prohibited characters: < > : " / \ | ? *
     cleaned = re.sub(r'[<>:"/\\|?*]', "_", cleaned)
 
-    # Disallow leading/trailing dots or spaces (Windows trims them and can behave weirdly)
+    # Disallow leading/trailing dots or spaces
     cleaned = cleaned.strip(". ")
 
     if not cleaned:
@@ -62,12 +63,13 @@ def sanitize_filename(filename: str) -> str:
 def is_within_root(root: Path, candidate: Path) -> bool:
     """Check that candidate path is strictly within the allowed root directory.
     
-    Resolves symlinks, junctions, and relative segments ('..').
-    Handles Windows drive letters, network shares, and UNC canonical forms.
+    Resolves symlinks (including Android /sdcard -> /storage/emulated/0),
+    junctions, and relative segments ('..').
+    Handles Windows drive letters, Android paths, and network shares.
     """
     try:
         try:
-            root_resolved = root.resolve(strict=True)
+            root_resolved = root.resolve(strict=False)
         except Exception:
             root_resolved = root
 
@@ -76,17 +78,24 @@ def is_within_root(root: Path, candidate: Path) -> bool:
         except Exception:
             candidate_resolved = candidate
 
+        # 1. Native Path.is_relative_to (Python 3.9+)
+        try:
+            if candidate_resolved == root_resolved or candidate_resolved.is_relative_to(root_resolved):
+                return True
+        except (AttributeError, ValueError):
+            pass
+
+        # 2. Compare canonical commonpath
         root_norm = os.path.normpath(os.path.normcase(str(root_resolved)))
         candidate_norm = os.path.normpath(os.path.normcase(str(candidate_resolved)))
 
-        # Compare canonical commonpath
         try:
             if os.path.normpath(os.path.commonpath([root_norm, candidate_norm])) == root_norm:
                 return True
         except ValueError:
             pass
 
-        # Fallback check on raw normalized paths (e.g. for mapped network drives Z:\)
+        # 3. Fallback check on raw normalized paths (e.g. for mapped network drives Z:\ or Android symlinks)
         raw_root = os.path.normpath(os.path.normcase(str(root)))
         raw_cand = os.path.normpath(os.path.normcase(str(candidate)))
         try:
@@ -130,16 +139,21 @@ def safe_resolve_path(root: Path, relative_path: str) -> Path:
 
 def get_or_create_csrf_token() -> str:
     """Get existing CSRF token or create a new cryptographically secure token."""
+    if not has_request_context():
+        return secrets.token_hex(32)
     if "csrf_token" not in session:
         session["csrf_token"] = secrets.token_hex(32)
     return session["csrf_token"]
 
 
-def validate_csrf():
+def validate_csrf() -> bool:
     """Validates the CSRF token on state-changing requests.
     
-    Checks X-CSRF-Token header or 'csrf_token' form parameter.
+    Accepts X-CSRF-Token, X-CSRFToken, X-XSRF-TOKEN headers, or 'csrf_token' form/JSON body.
     """
+    if not has_request_context():
+        return True
+
     if request.method in ("GET", "HEAD", "OPTIONS"):
         return True
 
@@ -147,12 +161,20 @@ def validate_csrf():
     if not expected:
         return False
 
-    received = request.headers.get("X-CSRF-Token")
+    # Check various standard header conventions
+    received = (
+        request.headers.get("X-CSRF-Token")
+        or request.headers.get("X-CSRFToken")
+        or request.headers.get("X-XSRF-TOKEN")
+    )
+
     if not received and request.form:
         received = request.form.get("csrf_token")
+
     if not received and request.is_json:
         try:
-            received = request.get_json(silent=True, force=False).get("csrf_token")
+            body = request.get_json(silent=True) or {}
+            received = body.get("csrf_token")
         except Exception:
             pass
 
@@ -163,7 +185,9 @@ def validate_csrf():
 
 def get_client_ip() -> str:
     """Extract client IP respecting X-Forwarded-For if trusted or remote_addr."""
-    # When behind reverse proxy, take the first IP, else fallback to remote_addr
+    if not has_request_context():
+        return "127.0.0.1"
+
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -216,18 +240,25 @@ def reset_login_attempts(identifier: str):
 # --- Security Audit Logging ---
 
 def audit_log(action: str, username: str = "anonymous", status: str = "SUCCESS", details: str = ""):
-    """Record a structured security event in the audit log.
-    
-    Logs never include passwords, hashes, or session secrets.
-    """
+    """Record a structured security event in the audit log safely inside or outside request context."""
+    user_agent = "system"
+    client_ip = "127.0.0.1"
+
+    if has_request_context():
+        try:
+            client_ip = get_client_ip()
+            user_agent = request.headers.get("User-Agent", "unknown")[:150]
+        except Exception:
+            pass
+
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "action": action,
         "username": username,
-        "ip": get_client_ip(),
+        "ip": client_ip,
         "status": status,
         "details": details,
-        "user_agent": request.headers.get("User-Agent", "unknown")[:150]
+        "user_agent": user_agent,
     }
 
     try:

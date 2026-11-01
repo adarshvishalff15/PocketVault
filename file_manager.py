@@ -192,7 +192,7 @@ def search_files_recursive(
     category_filter: str = "",
     max_results: int = 150,
 ) -> list[dict]:
-    """Safe recursive search with depth limit (max 5 levels deep) and max result cap."""
+    """Safe, fast recursive search with depth limit, ignore sets, and execution budget."""
     root_info = get_root_by_id(root_id)
     if not root_info:
         return []
@@ -202,19 +202,35 @@ def search_files_recursive(
     match_all = not query_lower or query_lower in (".", "*")
     results = []
 
+    # If searching whole-drive root, limit depth to 2; for library folders limit to 4
+    is_drive_root = (root_info.get("type") == "drive" or len(root_path.parts) <= 1)
+    max_depth = 2 if is_drive_root else 4
+
+    IGNORED_DIRS = {
+        "System Volume Information", "node_modules", "Windows", "Program Files",
+        "Program Files (x86)", "ProgramData", "AppData", "Recovery", "boot",
+        "__pycache__", ".git", "venv", ".venv", "env", "site-packages", "usr",
+        "etc", "var", "lib", "proc", "sys", "dev", "Temp", "Cache", "cache"
+    }
+
+    import time
+    start_time = time.time()
+
     for root_dir, dirs, files in os.walk(root_path, followlinks=False):
-        # Prevent diving too deep (max 5 nested directories)
+        # Time budget per root (max 0.4 seconds)
+        if (time.time() - start_time) > 0.4:
+            break
+
         try:
             rel_depth = len(Path(root_dir).relative_to(root_path).parts)
-            if rel_depth > 5:
+            if rel_depth > max_depth:
                 dirs.clear()
                 continue
         except Exception:
             dirs.clear()
             continue
 
-        # Exclude hidden or system directories like $RECYCLE.BIN, System Volume Information, .git
-        dirs[:] = [d for d in dirs if not d.startswith((".", "$")) and d not in ("System Volume Information", "node_modules", "Windows", "__pycache__", ".git")]
+        dirs[:] = [d for d in dirs if not d.startswith((".", "$")) and d not in IGNORED_DIRS]
 
         for name in files:
             if match_all or query_lower in name.lower():

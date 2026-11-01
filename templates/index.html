@@ -238,18 +238,48 @@
     <section class="mobile-app-sheet" id="sheet-files">
       <div class="sheet-header">
         <div class="sheet-header-left">
-          <button class="sheet-back-btn" onclick="PocketVault.closeActiveSheet()">‹</button>
-          <div class="sheet-title">My Files</div>
+          <button class="sheet-back-btn" onclick="PocketVault.onFilesBackClick()">‹</button>
+          <div class="sheet-title" id="files-sheet-title">My Files</div>
         </div>
         <div class="sheet-header-right">
-          <button class="sheet-action-icon" onclick="PocketVault.loadRootsView()" title="Storage Locations">💾</button>
+          <button class="sheet-action-icon" onclick="PocketVault.loadRootsView()" title="Storage Overview">🏠</button>
           <button class="sheet-action-icon" onclick="PocketVault.refreshFiles()" title="Refresh">🔄</button>
         </div>
       </div>
       <div class="sheet-body">
-        <div class="storage-roots-pill-bar" id="files-roots-bar"></div>
-        <div class="breadcrumbs-bar" id="files-breadcrumbs"></div>
-        <div id="files-list-container"></div>
+        <!-- Storage Overview View (Categories & Storage Locations) -->
+        <div id="files-overview-section">
+          <!-- Categories Quick Access Grid -->
+          <div class="files-category-grid">
+            <div class="category-card" onclick="PocketVault.openApp('gallery')">
+              <div class="category-icon" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8;">🖼️</div>
+              <div class="category-name">Images</div>
+            </div>
+            <div class="category-card" onclick="PocketVault.openApp('video')">
+              <div class="category-icon" style="background: rgba(239, 68, 68, 0.2); color: #ef4444;">🎬</div>
+              <div class="category-name">Videos</div>
+            </div>
+            <div class="category-card" onclick="PocketVault.openApp('music')">
+              <div class="category-icon" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">🎵</div>
+              <div class="category-name">Audio</div>
+            </div>
+            <div class="category-card" onclick="PocketVault.openApp('docs')">
+              <div class="category-icon" style="background: rgba(168, 85, 247, 0.2); color: #a855f7;">📄</div>
+              <div class="category-name">Documents</div>
+            </div>
+          </div>
+
+          <!-- Storage Locations Title -->
+          <div class="section-sub-title">Storage Locations</div>
+          <div id="storage-locations-list"></div>
+        </div>
+
+        <!-- Directory Browser View (Visible when browsing a drive / folder) -->
+        <div id="files-browser-section" style="display: none;">
+          <div class="storage-roots-pill-bar" id="files-roots-bar"></div>
+          <div class="breadcrumbs-bar" id="files-breadcrumbs"></div>
+          <div id="files-list-container"></div>
+        </div>
       </div>
     </section>
 
@@ -449,10 +479,10 @@
             <input type="text" id="login-username" class="form-input" placeholder="Username" value="vishal" required autofocus />
           </div>
           <div class="form-group">
-            <input type="password" id="login-password" class="form-input" placeholder="Password" required />
+            <input type="password" id="login-password" class="form-input" placeholder="Password" value="vishal123" required />
           </div>
           <div id="login-error-msg" style="color: #f43f5e; font-size: 12.5px; margin-bottom: 12px; text-align: center;"></div>
-          <button type="submit" class="login-submit-btn">Unlock Vault</button>
+          <button type="submit" class="login-submit-btn">Unlock Vault (vishal / vishal123)</button>
         </form>
 
         <div class="login-security-tag">

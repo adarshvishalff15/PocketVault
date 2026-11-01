@@ -1,7 +1,8 @@
 /**
- * PocketVault - Mobile OS Client Controller (v2.0)
- * Powers the Samsung One UI / Android style mobile experience with dynamic screen wallpaper
- * auto-fetching from shared devices, live widgets, and quick settings control center.
+ * PocketVault - Mobile OS Client Controller (v2.1)
+ * Authentic Samsung One UI / Android 15 Mobile Experience
+ * 100% full-screen mobile workstation with native gesture navigation,
+ * dynamic shared screen wallpapers, live widgets, and category-first file explorer.
  */
 
 const PocketVault = {
@@ -15,13 +16,12 @@ const PocketVault = {
   sheetHistory: [],
   searchDebounceTimer: null,
   autoFetchEnabled: true,
-  displayMode: "phone", // 'phone' or 'wide'
+  currentViewMode: "roots", // "roots" or "browser"
 
   async init() {
     this.updateClock();
     setInterval(() => this.updateClock(), 1000);
     this.initBattery();
-    this.initDisplayMode();
     await this.loadWallpaper();
     await this.checkAuthStatus();
     this.setupEventListeners();
@@ -70,45 +70,11 @@ const PocketVault = {
         battery.addEventListener("levelchange", update);
         battery.addEventListener("chargingchange", update);
       } catch (e) {
-        batteryText.textContent = "88%";
+        batteryText.textContent = "95%";
       }
     } else {
-      batteryText.textContent = "88%";
+      batteryText.textContent = "95%";
     }
-  },
-
-  // --------------------------------------------------------------------------
-  // Display Mode Switcher (Phone Frame vs Wide Tablet View)
-  // --------------------------------------------------------------------------
-  initDisplayMode() {
-    const saved = localStorage.getItem("pv_display_mode") || "phone";
-    this.setDisplayMode(saved);
-  },
-
-  setDisplayMode(mode) {
-    this.displayMode = mode;
-    localStorage.setItem("pv_display_mode", mode);
-    const viewport = document.getElementById("mobile-viewport");
-    const label = document.getElementById("display-mode-label");
-    const settingLabel = document.getElementById("setting-display-mode");
-
-    if (viewport) {
-      if (mode === "wide") {
-        viewport.classList.add("wide-mode");
-        if (label) label.textContent = "Expanded Wide";
-        if (settingLabel) settingLabel.textContent = "Expanded Tablet Mode (Click to toggle)";
-      } else {
-        viewport.classList.remove("wide-mode");
-        if (label) label.textContent = "Phone Frame";
-        if (settingLabel) settingLabel.textContent = "Phone Frame (Click to toggle)";
-      }
-    }
-  },
-
-  toggleDisplayMode() {
-    this.vibrate(20);
-    const newMode = this.displayMode === "phone" ? "wide" : "phone";
-    this.setDisplayMode(newMode);
   },
 
   // --------------------------------------------------------------------------
@@ -290,7 +256,7 @@ const PocketVault = {
       if (subEl) subEl.textContent = "Create password for PocketVault";
     } else {
       if (titleEl) titleEl.textContent = "PocketVault";
-      if (subEl) subEl.textContent = "Enter password to access device storage";
+      if (subEl) subEl.textContent = "Personal Mobile File Server";
     }
   },
 
@@ -303,7 +269,7 @@ const PocketVault = {
 
   async handleLogin(username, password) {
     const errBox = document.getElementById("login-error-msg");
-    if (errBox) errBox.textContent = "";
+    if (errBox) errBox.textContent = "Authenticating...";
 
     try {
       const res = await fetch("/api/auth/login", {
@@ -372,8 +338,7 @@ const PocketVault = {
 
     switch (appName) {
       case "files":
-        this.loadRootsBar();
-        this.loadDirectory(this.currentRootId, this.currentPath);
+        this.loadRootsView();
         break;
       case "gallery":
         this.loadGallery();
@@ -471,14 +436,17 @@ const PocketVault = {
           if (isAud) icon = "🎵";
           if (isVid) icon = "🎬";
 
+          const encPath = encodeURIComponent(f.rel_path);
+          const encName = encodeURIComponent(f.name);
+
           html += `
-            <div class="file-row" onclick="PocketVault.handleSearchItemClick(${f.root_id || 0}, '${f.rel_path.replace(/'/g, "\\'")}', '${f.category}', '${f.name.replace(/'/g, "\\'")}')">
+            <div class="file-row" onclick="PocketVault.onSearchItemClick(this)" data-root="${f.root_id || 0}" data-path="${encPath}" data-cat="${f.category}" data-name="${encName}">
               <div class="file-icon-box" style="background: rgba(56, 189, 248, 0.15);">${icon}</div>
               <div class="file-info-col">
                 <div class="file-name">${f.name}</div>
                 <div class="file-meta">${f.size_human} • ${f.root_name || "Storage"}</div>
               </div>
-              <a href="/api/files/download?root_id=${f.root_id || 0}&path=${encodeURIComponent(f.rel_path)}" class="file-dl-btn" download onclick="event.stopPropagation()">↓</a>
+              <a href="/api/files/download?root_id=${f.root_id || 0}&path=${encPath}" class="file-dl-btn" download onclick="event.stopPropagation()">↓</a>
             </div>
           `;
         });
@@ -489,84 +457,69 @@ const PocketVault = {
     }, 280);
   },
 
-  handleSearchItemClick(rootId, relPath, category, name) {
-    if (category === "image") {
-      this.openLightbox(`/api/files/download?root_id=${rootId}&path=${encodeURIComponent(relPath)}`, name);
-    } else if (category === "audio") {
-      this.playMediaStream(rootId, relPath, "audio", name);
-    } else if (category === "video") {
-      this.playMediaStream(rootId, relPath, "video", name);
+  onSearchItemClick(el) {
+    const rootId = parseInt(el.dataset.root, 10);
+    const relPath = decodeURIComponent(el.dataset.path || "");
+    const category = el.dataset.cat || "";
+    const name = decodeURIComponent(el.dataset.name || "");
+    this.handleFileClick(rootId, relPath, category, name);
+  },
+
+  // --------------------------------------------------------------------------
+  // File Explorer (Samsung One UI My Files Style)
+  // --------------------------------------------------------------------------
+  onFilesBackClick() {
+    if (this.currentViewMode === "browser") {
+      if (this.currentPath) {
+        // Go to parent directory
+        const parts = this.currentPath.split("/").filter(Boolean);
+        parts.pop();
+        const parentPath = parts.join("/");
+        this.loadDirectory(this.currentRootId, parentPath);
+      } else {
+        // Return to Storage Overview
+        this.loadRootsView();
+      }
     } else {
-      window.open(`/api/files/download?root_id=${rootId}&path=${encodeURIComponent(relPath)}`, "_blank");
+      this.closeActiveSheet();
     }
   },
 
-  // --------------------------------------------------------------------------
-  // File Explorer & Storage Roots
-  // --------------------------------------------------------------------------
   async refreshFiles() {
-    await this.loadDirectory(this.currentRootId, this.currentPath);
-  },
-
-  async loadRootsBar() {
-    const bar = document.getElementById("files-roots-bar");
-    if (!bar) return;
-    try {
-      const res = await fetch("/api/roots");
-      const data = await res.json();
-      if (data.success && data.roots) {
-        this.cachedRoots = data.roots;
-        let html = "";
-        data.roots.forEach(r => {
-          const isActive = r.id === this.currentRootId;
-          let icon = "📁";
-          const nameLower = (r.name || "").toLowerCase();
-          if (nameLower.includes("internal") || nameLower.includes("phone")) icon = "📱";
-          else if (nameLower.includes("sd") || nameLower.includes("card") || nameLower.includes("drive")) icon = "💾";
-          else if (nameLower.includes("download")) icon = "📥";
-          else if (nameLower.includes("picture") || nameLower.includes("wallpaper")) icon = "🖼️";
-          else if (nameLower.includes("camera") || nameLower.includes("dcim")) icon = "📸";
-          else if (nameLower.includes("music") || nameLower.includes("audio")) icon = "🎵";
-          else if (nameLower.includes("video") || nameLower.includes("movie")) icon = "🎬";
-          else if (nameLower.includes("doc")) icon = "📄";
-          else if (nameLower.includes("home")) icon = "🏠";
-
-          html += `
-            <button class="storage-root-chip ${isActive ? 'active' : ''}" onclick="PocketVault.loadDirectory(${r.id}, '')">
-              <span>${icon}</span>
-              <span>${r.name}</span>
-            </button>
-          `;
-        });
-        bar.innerHTML = html;
-      }
-    } catch (e) {}
+    if (this.currentViewMode === "browser") {
+      await this.loadDirectory(this.currentRootId, this.currentPath);
+    } else {
+      await this.loadRootsView();
+    }
   },
 
   async loadRootsView() {
     this.vibrate(20);
-    const list = document.getElementById("files-list-container");
-    const bc = document.getElementById("files-breadcrumbs");
+    this.currentViewMode = "roots";
+    this.currentPath = "";
+
+    const overviewSec = document.getElementById("files-overview-section");
+    const browserSec = document.getElementById("files-browser-section");
+    const titleEl = document.getElementById("files-sheet-title");
+    const list = document.getElementById("storage-locations-list");
+
+    if (titleEl) titleEl.textContent = "My Files";
+    if (overviewSec) overviewSec.style.display = "block";
+    if (browserSec) browserSec.style.display = "none";
     if (!list) return;
 
-    if (bc) {
-      bc.innerHTML = `<span class="crumb-item" style="color:#f8fafc; font-weight:600;">Storage Locations</span>`;
-    }
-
-    list.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">Scanning device storage...</div>';
+    list.innerHTML = '<div style="text-align:center; padding:20px; color:#94a3b8;">Scanning device storage...</div>';
 
     try {
       const res = await fetch("/api/roots");
       const data = await res.json();
       if (!data.success || !data.roots || data.roots.length === 0) {
-        list.innerHTML = '<div style="color:#f43f5e; padding:20px;">No storage roots found.</div>';
+        list.innerHTML = '<div style="color:#f43f5e; padding:16px;">No storage locations detected.</div>';
         return;
       }
 
       this.cachedRoots = data.roots;
-      this.loadRootsBar();
-
-      let html = '<div style="padding:4px 0 10px 0; font-size:11.5px; color:#94a3b8; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Storage Locations & Drives</div>';
+      let html = "";
 
       data.roots.forEach(r => {
         let icon = "📁";
@@ -582,7 +535,7 @@ const PocketVault = {
         else if (nameLower.includes("home")) icon = "🏠";
 
         const storage = r.storage || {};
-        const metaText = storage.free_human && storage.total_human
+        const metaText = (storage.free_human && storage.total_human)
           ? `${storage.free_human} free of ${storage.total_human}`
           : "Ready";
         const pct = storage.percent_used || 0;
@@ -599,23 +552,63 @@ const PocketVault = {
                 </div>
               ` : ''}
             </div>
-            <div style="font-size:16px; color:#94a3b8; margin-left:8px;">›</div>
+            <div style="font-size:18px; color:#94a3b8; margin-left:8px;">›</div>
           </div>
         `;
       });
 
       list.innerHTML = html;
     } catch (e) {
-      list.innerHTML = '<div style="color:#f43f5e; padding:20px;">Failed to scan storage locations.</div>';
+      list.innerHTML = '<div style="color:#f43f5e; padding:16px;">Failed to scan storage locations.</div>';
     }
   },
 
+  async loadRootsBar() {
+    const bar = document.getElementById("files-roots-bar");
+    if (!bar) return;
+    try {
+      const roots = this.cachedRoots.length > 0 ? this.cachedRoots : (await (await fetch("/api/roots")).json()).roots || [];
+      this.cachedRoots = roots;
+
+      let html = "";
+      roots.forEach(r => {
+        const isActive = r.id === this.currentRootId;
+        let icon = "📁";
+        const nameLower = (r.name || "").toLowerCase();
+        if (nameLower.includes("internal") || nameLower.includes("phone")) icon = "📱";
+        else if (nameLower.includes("sd") || nameLower.includes("card") || nameLower.includes("drive")) icon = "💾";
+        else if (nameLower.includes("download")) icon = "📥";
+        else if (nameLower.includes("picture") || nameLower.includes("wallpaper")) icon = "🖼️";
+        else if (nameLower.includes("camera") || nameLower.includes("dcim")) icon = "📸";
+        else if (nameLower.includes("music") || nameLower.includes("audio")) icon = "🎵";
+        else if (nameLower.includes("video") || nameLower.includes("movie")) icon = "🎬";
+        else if (nameLower.includes("doc")) icon = "📄";
+        else if (nameLower.includes("home")) icon = "🏠";
+
+        html += `
+          <button class="storage-root-chip ${isActive ? 'active' : ''}" onclick="PocketVault.loadDirectory(${r.id}, '')">
+            <span>${icon}</span>
+            <span>${r.name}</span>
+          </button>
+        `;
+      });
+      bar.innerHTML = html;
+    } catch (e) {}
+  },
+
   async loadDirectory(rootId, path) {
+    this.currentViewMode = "browser";
     this.currentRootId = (rootId !== undefined && rootId !== null) ? rootId : (this.currentRootId || 0);
     this.currentPath = path || "";
 
+    const overviewSec = document.getElementById("files-overview-section");
+    const browserSec = document.getElementById("files-browser-section");
+    const titleEl = document.getElementById("files-sheet-title");
     const list = document.getElementById("files-list-container");
     const bc = document.getElementById("files-breadcrumbs");
+
+    if (overviewSec) overviewSec.style.display = "none";
+    if (browserSec) browserSec.style.display = "block";
     if (!list) return;
 
     this.loadRootsBar();
@@ -630,6 +623,10 @@ const PocketVault = {
         return;
       }
 
+      if (titleEl) {
+        titleEl.textContent = data.current_path ? data.current_path.split("/").pop() : (data.root_name || "Files");
+      }
+
       this.renderBreadcrumbs(bc, data.breadcrumbs, this.currentRootId, data.root_name);
 
       const directories = data.directories || (data.items ? data.items.filter(i => i.is_dir) : []);
@@ -642,14 +639,15 @@ const PocketVault = {
 
       let html = "";
       directories.forEach(d => {
+        const encPath = encodeURIComponent(d.rel_path);
         html += `
-          <div class="file-row" onclick="PocketVault.loadDirectory(${this.currentRootId}, '${d.rel_path.replace(/'/g, "\\'")}')">
+          <div class="file-row" onclick="PocketVault.onDirClick(this)" data-root="${this.currentRootId}" data-path="${encPath}">
             <div class="file-icon-box" style="background:#0284c7;">📁</div>
             <div class="file-info-col">
               <div class="file-name">${d.name}</div>
               <div class="file-meta">Folder • ${d.modified_human || d.modified_str || ""}</div>
             </div>
-            <div style="font-size:16px; color:#94a3b8; margin-left:8px;">›</div>
+            <div style="font-size:18px; color:#94a3b8; margin-left:8px;">›</div>
           </div>
         `;
       });
@@ -663,9 +661,12 @@ const PocketVault = {
         if (isAud) icon = "🎵";
         if (isVid) icon = "🎬";
 
+        const encPath = encodeURIComponent(f.rel_path);
+        const encName = encodeURIComponent(f.name);
+
         let iconHtml = `<div class="file-icon-box" style="background: rgba(255,255,255,0.08);">${icon}</div>`;
         if (isImg) {
-          const thumbUrl = `/api/files/thumbnail?root_id=${this.currentRootId}&path=${encodeURIComponent(f.rel_path)}&size=100`;
+          const thumbUrl = `/api/files/thumbnail?root_id=${this.currentRootId}&path=${encPath}&size=100`;
           iconHtml = `
             <div class="file-icon-box" style="padding:0; overflow:hidden; background: rgba(255,255,255,0.04);">
               <img src="${thumbUrl}" class="file-thumb-mini" loading="lazy" alt="${f.name}" onerror="this.onerror=null; this.parentNode.innerHTML='🖼️';" />
@@ -674,13 +675,13 @@ const PocketVault = {
         }
 
         html += `
-          <div class="file-row" onclick="PocketVault.handleFileClick(${this.currentRootId}, '${f.rel_path.replace(/'/g, "\\'")}', '${f.category}', '${f.name.replace(/'/g, "\\"')}')">
+          <div class="file-row" onclick="PocketVault.onFileClick(this)" data-root="${this.currentRootId}" data-path="${encPath}" data-cat="${f.category}" data-name="${encName}">
             ${iconHtml}
             <div class="file-info-col">
               <div class="file-name">${f.name}</div>
               <div class="file-meta">${f.size_human} • ${f.modified_human || f.modified_str || ""}</div>
             </div>
-            <a href="/api/files/download?root_id=${this.currentRootId}&path=${encodeURIComponent(f.rel_path)}" class="file-dl-btn" download onclick="event.stopPropagation()">↓</a>
+            <a href="/api/files/download?root_id=${this.currentRootId}&path=${encPath}" class="file-dl-btn" download onclick="event.stopPropagation()">↓</a>
           </div>
         `;
       });
@@ -691,6 +692,26 @@ const PocketVault = {
     }
   },
 
+  onDirClick(el) {
+    const rootId = parseInt(el.dataset.root, 10);
+    const relPath = decodeURIComponent(el.dataset.path || "");
+    this.loadDirectory(rootId, relPath);
+  },
+
+  onFileClick(el) {
+    const rootId = parseInt(el.dataset.root, 10);
+    const relPath = decodeURIComponent(el.dataset.path || "");
+    const category = el.dataset.cat || "";
+    const name = decodeURIComponent(el.dataset.name || "");
+    this.handleFileClick(rootId, relPath, category, name);
+  },
+
+  onCrumbClick(el) {
+    const rootId = parseInt(el.dataset.root, 10);
+    const relPath = decodeURIComponent(el.dataset.path || "");
+    this.loadDirectory(rootId, relPath);
+  },
+
   renderBreadcrumbs(el, crumbs, rootId, rootName) {
     if (!el) return;
     let html = `<span class="crumb-item" onclick="PocketVault.loadRootsView()">Storage</span>`;
@@ -698,7 +719,8 @@ const PocketVault = {
       crumbs.forEach((c, idx) => {
         const isLast = idx === crumbs.length - 1;
         const style = isLast ? 'style="color:#f8fafc; font-weight:600;"' : '';
-        html += ` <span style="opacity:0.4;">›</span> <span class="crumb-item" ${style} onclick="PocketVault.loadDirectory(${rootId}, '${c.path.replace(/'/g, "\\'")}')">${c.name}</span>`;
+        const encPath = encodeURIComponent(c.path);
+        html += ` <span style="opacity:0.4;">›</span> <span class="crumb-item" ${style} onclick="PocketVault.onCrumbClick(this)" data-root="${rootId}" data-path="${encPath}">${c.name}</span>`;
       });
     } else if (rootName) {
       html += ` <span style="opacity:0.4;">›</span> <span class="crumb-item" style="color:#f8fafc; font-weight:600;" onclick="PocketVault.loadDirectory(${rootId}, '')">${rootName}</span>`;
@@ -738,8 +760,10 @@ const PocketVault = {
       data.results.forEach(img => {
         const thumbUrl = `/api/files/thumbnail?root_id=${img.root_id || 0}&path=${encodeURIComponent(img.rel_path)}&size=300`;
         const fullUrl = `/api/files/download?root_id=${img.root_id || 0}&path=${encodeURIComponent(img.rel_path)}`;
+        const encName = encodeURIComponent(img.name);
+
         html += `
-          <div class="gallery-thumbnail-card" onclick="PocketVault.openLightbox('${fullUrl}', '${img.name.replace(/'/g, "\\'")}')">
+          <div class="gallery-thumbnail-card" onclick="PocketVault.onGalleryItemClick(this)" data-url="${fullUrl}" data-name="${encName}">
             <img src="${thumbUrl}" loading="lazy" alt="${img.name}" />
           </div>
         `;
@@ -748,6 +772,12 @@ const PocketVault = {
     } catch (e) {
       grid.innerHTML = '<div style="color:#f43f5e; padding:20px;">Could not load gallery.</div>';
     }
+  },
+
+  onGalleryItemClick(el) {
+    const url = el.dataset.url || "";
+    const name = decodeURIComponent(el.dataset.name || "");
+    this.openLightbox(url, name);
   },
 
   openLightbox(url, caption) {
@@ -784,19 +814,23 @@ const PocketVault = {
       }
       let html = "";
       data.results.forEach(v => {
+        const encPath = encodeURIComponent(v.rel_path);
+        const encName = encodeURIComponent(v.name);
         html += `
-          <div class="file-row" onclick="PocketVault.playMediaStream(${v.root_id || 0}, '${v.rel_path.replace(/'/g, "\\'")}', 'video', '${v.name.replace(/'/g, "\\'")}')">
+          <div class="file-row" onclick="PocketVault.onMediaClick(this)" data-root="${v.root_id || 0}" data-path="${encPath}" data-type="video" data-name="${encName}">
             <div class="file-icon-box" style="background:#dc2626;">🎬</div>
             <div class="file-info-col">
               <div class="file-name">${v.name}</div>
               <div class="file-meta">${v.size_human} • Stream (HTTP 206)</div>
             </div>
-            <a href="/api/files/download?root_id=${v.root_id || 0}&path=${encodeURIComponent(v.rel_path)}" class="file-dl-btn" download onclick="event.stopPropagation()">↓</a>
+            <a href="/api/files/download?root_id=${v.root_id || 0}&path=${encPath}" class="file-dl-btn" download onclick="event.stopPropagation()">↓</a>
           </div>
         `;
       });
       list.innerHTML = html;
-    } catch (e) {}
+    } catch (e) {
+      list.innerHTML = '<div style="color:#f43f5e; padding:20px;">Could not load videos.</div>';
+    }
   },
 
   // --------------------------------------------------------------------------
@@ -816,19 +850,22 @@ const PocketVault = {
       }
       let html = "";
       data.results.forEach(doc => {
+        const encPath = encodeURIComponent(doc.rel_path);
         html += `
-          <div class="file-row" onclick="window.open('/api/files/download?root_id=${doc.root_id || 0}&path=${encodeURIComponent(doc.rel_path)}', '_blank')">
+          <div class="file-row" onclick="window.open('/api/files/download?root_id=${doc.root_id || 0}&path=${encPath}', '_blank')">
             <div class="file-icon-box" style="background:#2563eb;">📄</div>
             <div class="file-info-col">
               <div class="file-name">${doc.name}</div>
               <div class="file-meta">${doc.size_human} • Tap to view</div>
             </div>
-            <a href="/api/files/download?root_id=${doc.root_id || 0}&path=${encodeURIComponent(doc.rel_path)}" class="file-dl-btn" download onclick="event.stopPropagation()">↓</a>
+            <a href="/api/files/download?root_id=${doc.root_id || 0}&path=${encPath}" class="file-dl-btn" download onclick="event.stopPropagation()">↓</a>
           </div>
         `;
       });
       list.innerHTML = html;
-    } catch (e) {}
+    } catch (e) {
+      list.innerHTML = '<div style="color:#f43f5e; padding:20px;">Could not load documents.</div>';
+    }
   },
 
   // --------------------------------------------------------------------------
@@ -848,19 +885,31 @@ const PocketVault = {
       }
       let html = "";
       data.results.forEach(m => {
+        const encPath = encodeURIComponent(m.rel_path);
+        const encName = encodeURIComponent(m.name);
         html += `
-          <div class="file-row" onclick="PocketVault.playMediaStream(${m.root_id || 0}, '${m.rel_path.replace(/'/g, "\\'")}', 'audio', '${m.name.replace(/'/g, "\\'")}')">
+          <div class="file-row" onclick="PocketVault.onMediaClick(this)" data-root="${m.root_id || 0}" data-path="${encPath}" data-type="audio" data-name="${encName}">
             <div class="file-icon-box" style="background:#059669;">🎵</div>
             <div class="file-info-col">
               <div class="file-name">${m.name}</div>
               <div class="file-meta">${m.size_human} • Audio Stream</div>
             </div>
-            <a href="/api/files/download?root_id=${m.root_id || 0}&path=${encodeURIComponent(m.rel_path)}" class="file-dl-btn" download onclick="event.stopPropagation()">↓</a>
+            <a href="/api/files/download?root_id=${m.root_id || 0}&path=${encPath}" class="file-dl-btn" download onclick="event.stopPropagation()">↓</a>
           </div>
         `;
       });
       list.innerHTML = html;
-    } catch (e) {}
+    } catch (e) {
+      list.innerHTML = '<div style="color:#f43f5e; padding:20px;">Could not load music.</div>';
+    }
+  },
+
+  onMediaClick(el) {
+    const rootId = parseInt(el.dataset.root, 10);
+    const relPath = decodeURIComponent(el.dataset.path || "");
+    const type = el.dataset.type || "audio";
+    const name = decodeURIComponent(el.dataset.name || "");
+    this.playMediaStream(rootId, relPath, type, name);
   },
 
   playMediaStream(rootId, relPath, type, title) {
@@ -875,31 +924,23 @@ const PocketVault = {
 
       if (audio) {
         audio.src = streamUrl;
-        audio.play();
+        audio.play().catch(() => {});
         if (mini) mini.style.display = "flex";
-        if (miniTitle) miniTitle.textContent = title || "Audio Track";
+        if (miniTitle) miniTitle.textContent = title;
         if (playBtn) playBtn.textContent = "⏸";
-
-        if ("mediaSession" in navigator) {
-          navigator.mediaSession.metadata = new MediaMetadata({
-            title: title || "Audio Track",
-            artist: "PocketVault Mobile Server",
-            album: "Personal Cloud Stream",
-          });
-        }
+        this.updateMediaSessionMetadata(title, "PocketVault Audio Stream");
       }
-    } else {
-      // Video
+    } else if (type === "video") {
       const modal = document.getElementById("stream-player-modal");
       const video = document.getElementById("main-stream-video");
-      const headerTitle = document.getElementById("stream-video-title");
+      const vTitle = document.getElementById("stream-video-title");
 
-      if (modal && video) {
+      if (video) {
         video.src = streamUrl;
-        if (headerTitle) headerTitle.textContent = title || "Video Stream";
-        modal.style.display = "flex";
-        video.play();
+        video.play().catch(() => {});
       }
+      if (vTitle) vTitle.textContent = title;
+      if (modal) modal.style.display = "flex";
     }
   },
 
@@ -927,14 +968,6 @@ const PocketVault = {
     if (mini) mini.style.display = "none";
   },
 
-  setupMediaSession() {
-    if ("mediaSession" in navigator) {
-      navigator.mediaSession.setActionHandler("play", () => this.toggleAudioPlayback());
-      navigator.mediaSession.setActionHandler("pause", () => this.toggleAudioPlayback());
-      navigator.mediaSession.setActionHandler("stop", () => this.stopAudioPlayback());
-    }
-  },
-
   closePlayerModal() {
     const modal = document.getElementById("stream-player-modal");
     const video = document.getElementById("main-stream-video");
@@ -945,8 +978,26 @@ const PocketVault = {
     if (modal) modal.style.display = "none";
   },
 
+  setupMediaSession() {
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.setActionHandler("play", () => this.toggleAudioPlayback());
+      navigator.mediaSession.setActionHandler("pause", () => this.toggleAudioPlayback());
+      navigator.mediaSession.setActionHandler("stop", () => this.stopAudioPlayback());
+    }
+  },
+
+  updateMediaSessionMetadata(title, artist) {
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: title,
+        artist: artist,
+        album: "PocketVault Mobile",
+      });
+    }
+  },
+
   // --------------------------------------------------------------------------
-  // Installed Apps Inventory
+  // Installed Apps Inventory (Android Package Inspector)
   // --------------------------------------------------------------------------
   async loadInstalledApps() {
     const container = document.getElementById("apps-list-container");
@@ -957,7 +1008,7 @@ const PocketVault = {
       const res = await fetch("/api/apps/list");
       const data = await res.json();
       if (!data.success || !data.apps || data.apps.length === 0) {
-        container.innerHTML = '<div style="text-align:center; padding:30px; color:#64748b;">No packages detected.</div>';
+        container.innerHTML = '<div style="text-align:center; padding:30px; color:#64748b;">No third-party packages detected.</div>';
         return;
       }
 
@@ -965,141 +1016,104 @@ const PocketVault = {
       data.apps.forEach(app => {
         html += `
           <div class="file-row">
-            <div class="file-icon-box" style="background: linear-gradient(135deg, #6366f1, #4338ca);">📱</div>
+            <div class="file-icon-box" style="background: rgba(168, 85, 247, 0.15); font-size:16px;">📱</div>
             <div class="file-info-col">
-              <div class="file-name">${app.display_name}</div>
-              <div class="file-meta">${app.package_name} • ${app.size_human}</div>
+              <div class="file-name">${app.name}</div>
+              <div class="file-meta">${app.package}</div>
             </div>
           </div>
         `;
       });
       container.innerHTML = html;
     } catch (e) {
-      container.innerHTML = '<div style="color:#f43f5e; padding:20px;">Could not load apps list.</div>';
+      container.innerHTML = '<div style="color:#f43f5e; padding:20px;">Could not list apps.</div>';
     }
   },
 
   // --------------------------------------------------------------------------
-  // Wallpaper & Shared Screen Sync Center
+  // Wallpapers & Screen Capture Sync Picker
   // --------------------------------------------------------------------------
   async loadWallpaperPicker() {
     const grid = document.getElementById("wallpaper-grid-container");
     if (!grid) return;
-    grid.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">Discovering device screens & wallpapers...</div>';
+    grid.innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">Scanning shared screen devices...</div>';
 
     try {
       const res = await fetch("/api/wallpaper/list");
       const data = await res.json();
-      if (!data.success) return;
-
-      this.updateAutoFetchUI(data.auto_fetch);
+      if (!data.success) {
+        grid.innerHTML = '<div style="color:#f43f5e; padding:20px;">Could not load wallpapers.</div>';
+        return;
+      }
 
       let html = "";
 
-      // 1. Host Active Device Screen Wallpaper (Live Desktop / Phone Wallpaper)
-      if (data.system_screen) {
+      // System Screen Wallpapers
+      if (data.system_screen && data.system_screen.exists) {
         html += `
-          <div class="wallpaper-section-header">
-            <span class="wallpaper-section-title">🌟 Live Device Screen</span>
-            <span class="wallpaper-count-badge">System Desktop / Phone</span>
-          </div>
-          <div class="wallpaper-grid">
+          <div class="wallpaper-section-title">🖥️ Live Screen Wallpaper</div>
+          <div class="wallpaper-grid-row">
             <div class="wallpaper-card" onclick="PocketVault.setSystemScreenWallpaper()">
-              <img src="${data.system_screen.url}" loading="lazy" alt="Active Device Screen" />
-              <div class="wallpaper-badge live-screen">LIVE SCREEN</div>
-              <div class="wallpaper-card-title">${data.system_screen.title}</div>
+              <img src="/api/wallpaper/system_screen?t=${Date.now()}" alt="Active Screen" />
+              <div class="card-label">Active Host Wallpaper</div>
             </div>
           </div>
         `;
       }
 
-      // 2. Shared Screen Devices & Screenshots (auto-fetched from connected devices)
+      // Screen captures
       if (data.screen_captures && data.screen_captures.length > 0) {
-        html += `
-          <div class="wallpaper-section-header">
-            <span class="wallpaper-section-title">📱 Shared Screen Captures & Devices</span>
-            <span class="wallpaper-count-badge">${data.screen_captures.length} captured</span>
-          </div>
-          <div class="wallpaper-grid">
-        `;
+        html += '<div class="wallpaper-section-title">📸 Shared Screen Captures</div><div class="wallpaper-grid-row">';
         data.screen_captures.forEach(sc => {
+          const encPath = encodeURIComponent(sc.rel_path);
           html += `
-            <div class="wallpaper-card" onclick="PocketVault.setCustomWallpaper(${sc.root_id}, '${sc.rel_path.replace(/'/g, "\\'")}', '${sc.filename.replace(/'/g, "\\'")}')">
-              <img src="${sc.thumbnail_url || sc.url}" loading="lazy" alt="${sc.filename}" />
-              <div class="wallpaper-badge screenshot">SCREENSHOT</div>
-              <div class="wallpaper-card-title">${sc.filename}</div>
+            <div class="wallpaper-card" onclick="PocketVault.onWallpaperCardClick(this)" data-root="${sc.root_id}" data-path="${encPath}">
+              <img src="/api/files/thumbnail?root_id=${sc.root_id}&path=${encPath}&size=300" alt="${sc.name}" />
+              <div class="card-label">${sc.name}</div>
             </div>
           `;
         });
-        html += `</div>`;
+        html += '</div>';
       }
 
-      // 3. Wallpapers & Windows Spotlight
+      // Wallpaper folder
       if (data.wallpapers && data.wallpapers.length > 0) {
-        html += `
-          <div class="wallpaper-section-header">
-            <span class="wallpaper-section-title">🖼️ Screen Wallpapers & 4K Assets</span>
-            <span class="wallpaper-count-badge">${data.wallpapers.length} items</span>
-          </div>
-          <div class="wallpaper-grid">
-        `;
+        html += '<div class="wallpaper-section-title">🖼️ Wallpaper Library</div><div class="wallpaper-grid-row">';
         data.wallpapers.forEach(wp => {
-          const badgeClass = wp.is_spotlight ? "spotlight" : "screenshot";
-          const badgeLabel = wp.is_spotlight ? "4K SPOTLIGHT" : "WALLPAPER";
+          const encPath = encodeURIComponent(wp.rel_path);
           html += `
-            <div class="wallpaper-card" onclick="PocketVault.setCustomWallpaper(${wp.root_id}, '${wp.rel_path.replace(/'/g, "\\'")}', '${wp.filename.replace(/'/g, "\\'")}')">
-              <img src="${wp.thumbnail_url || wp.url}" loading="lazy" alt="${wp.filename}" />
-              <div class="wallpaper-badge ${badgeClass}">${badgeLabel}</div>
-              <div class="wallpaper-card-title">${wp.filename}</div>
+            <div class="wallpaper-card" onclick="PocketVault.onWallpaperCardClick(this)" data-root="${wp.root_id}" data-path="${encPath}">
+              <img src="/api/files/thumbnail?root_id=${wp.root_id}&path=${encPath}&size=300" alt="${wp.name}" />
+              <div class="card-label">${wp.name}</div>
             </div>
           `;
         });
-        html += `</div>`;
+        html += '</div>';
       }
 
-      // 4. Samsung One UI / AMOLED Presets
+      // Presets
       if (data.presets && data.presets.length > 0) {
-        html += `
-          <div class="wallpaper-section-header">
-            <span class="wallpaper-section-title">🎨 One UI & AMOLED Presets</span>
-            <span class="wallpaper-count-badge">Samsung S24 FE</span>
-          </div>
-          <div class="wallpaper-grid">
-        `;
+        html += '<div class="wallpaper-section-title">✨ Galaxy & One UI Presets</div><div class="wallpaper-grid-row">';
         data.presets.forEach(p => {
           html += `
-            <div class="wallpaper-preset-card" style="background:${p.gradient}" onclick="PocketVault.setPresetWallpaper('${p.id}', '${p.title.replace(/'/g, "\\'")}')">
-              <span>${p.title}</span>
+            <div class="wallpaper-preset-card" style="background:${p.gradient}" onclick="PocketVault.setPresetWallpaper('${p.id}', '${p.name}')">
+              <div class="preset-name">${p.name}</div>
             </div>
           `;
         });
-        html += `</div>`;
-      }
-
-      // 5. Camera Photos & Gallery
-      if (data.camera_photos && data.camera_photos.length > 0) {
-        html += `
-          <div class="wallpaper-section-header">
-            <span class="wallpaper-section-title">📷 Camera Roll & Photos</span>
-            <span class="wallpaper-count-badge">${data.camera_photos.length} photos</span>
-          </div>
-          <div class="wallpaper-grid">
-        `;
-        data.camera_photos.forEach(ph => {
-          html += `
-            <div class="wallpaper-card" onclick="PocketVault.setCustomWallpaper(${ph.root_id}, '${ph.rel_path.replace(/'/g, "\\'")}', '${ph.filename.replace(/'/g, "\\'")}')">
-              <img src="${ph.thumbnail_url || ph.url}" loading="lazy" alt="${ph.filename}" />
-              <div class="wallpaper-card-title">${ph.filename}</div>
-            </div>
-          `;
-        });
-        html += `</div>`;
+        html += '</div>';
       }
 
       grid.innerHTML = html;
     } catch (e) {
       grid.innerHTML = '<div style="color:#f43f5e; padding:20px;">Failed to load wallpapers.</div>';
     }
+  },
+
+  onWallpaperCardClick(el) {
+    const rootId = parseInt(el.dataset.root, 10);
+    const relPath = decodeURIComponent(el.dataset.path || "");
+    this.setCustomWallpaper(rootId, relPath);
   },
 
   async setSystemScreenWallpaper() {
@@ -1122,7 +1136,7 @@ const PocketVault = {
     await this.loadWallpaper();
   },
 
-  async setCustomWallpaper(rootId, relPath, filename) {
+  async setCustomWallpaper(rootId, relPath) {
     this.vibrate(25);
     await fetch("/api/wallpaper/set", {
       method: "POST",

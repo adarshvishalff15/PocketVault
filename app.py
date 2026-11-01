@@ -375,15 +375,34 @@ def api_search():
         results = search_files_recursive(root_info["id"], query, category_filter=category)
         return jsonify({"success": True, "root_id": root_info["id"], "results": results})
 
-    # If no root specified, search across all accessible roots
+    # If no root specified, search across all accessible roots with smart category prioritization
     all_results = []
     roots = get_roots()
-    for r in roots:
+
+    if category:
+        def root_priority(r):
+            name = (r.get("name") or "").lower()
+            if category == "image" and any(k in name for k in ("picture", "photo", "camera", "dcim", "wallpaper", "download")):
+                return 0
+            if category == "video" and any(k in name for k in ("video", "movie", "camera", "dcim", "download")):
+                return 0
+            if category == "audio" and any(k in name for k in ("music", "audio", "sound", "download")):
+                return 0
+            if category == "document" and any(k in name for k in ("document", "download", "desktop", "home")):
+                return 0
+            if r.get("type") == "drive":
+                return 2
+            return 1
+        sorted_roots = sorted(roots, key=root_priority)
+    else:
+        sorted_roots = roots
+
+    for r in sorted_roots:
         if can_access_root(r["id"]):
             try:
-                res = search_files_recursive(r["id"], query, category_filter=category, max_results=50)
+                res = search_files_recursive(r["id"], query, category_filter=category, max_results=60)
                 all_results.extend(res)
-                if len(all_results) >= 200:
+                if len(all_results) >= 180:
                     break
             except Exception:
                 continue

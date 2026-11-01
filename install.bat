@@ -26,3 +26,4 @@ echo   Installation Complete!
 echo   To launch PocketVault, run start.bat or start.ps1
 echo ==================================================
 pause
+

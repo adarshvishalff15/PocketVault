@@ -11,10 +11,8 @@ ENV/
 env/
 
 # Server runtime data & secrets
-data/secret.key
-data/users.json
-data/audit.log
-data/thumbnails/
+data/*
+!data/.gitkeep
 *.log
 
 # Environment variables & local configuration
@@ -25,4 +23,3 @@ data/thumbnails/
 .DS_Store
 Thumbs.db
 desktop.ini
-

@@ -6,27 +6,28 @@
   <meta name="theme-color" content="#090d16" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>{{ app_name }} - Mobile Personal Cloud</title>
+  <title>{{ app_name }} - Mobile Cloud</title>
   
-  <link rel="stylesheet" href="/static/css/mobile_os.css?v=1" />
-  <link rel="stylesheet" href="/static/css/mobile_sheets.css?v=1" />
+  <link rel="stylesheet" href="/static/css/mobile_os.css?v=2" />
+  <link rel="stylesheet" href="/static/css/mobile_sheets.css?v=2" />
 </head>
 <body>
 
-  <!-- Dynamic Phone Wallpaper Layer -->
+  <!-- Dynamic Shared Screen Wallpaper Backdrop Layer -->
   <div id="wallpaper-backdrop"></div>
   <div id="wallpaper-overlay"></div>
 
-  <!-- Mobile Viewport Frame -->
+  <!-- Mobile Viewport Frame (Edge-to-Edge on Mobile, Phone/Tablet Switchable on Desktop) -->
   <div id="mobile-viewport">
 
-    <!-- Mobile Top Status Bar -->
-    <header class="mobile-status-bar">
+    <!-- Mobile Top Status Bar (Tap to toggle Quick Settings Control Center) -->
+    <header class="mobile-status-bar" onclick="PocketVault.toggleQuickSettings()" title="Tap for Quick Settings">
       <div class="status-left">
-        <span id="status-time-display">15:30</span>
-        <span style="font-size: 11px; opacity: 0.85;">• 5G</span>
+        <span id="status-time-display">16:00</span>
+        <span class="status-net-pill">• 5G</span>
       </div>
       <div class="status-right">
+        <span class="status-auto-sync" id="status-auto-sync-dot" title="Auto-fetching screen wallpapers">🔄</span>
         <span class="status-pill">READ-ONLY</span>
         <div class="battery-indicator">
           <span id="status-battery-pct">88%</span>
@@ -35,15 +36,70 @@
       </div>
     </header>
 
-    <!-- Mobile Home Screen (App Launcher) -->
+    <!-- Quick Settings / Control Center Shade (Slide Down) -->
+    <div id="quick-settings-shade">
+      <div class="shade-handle" onclick="PocketVault.toggleQuickSettings()"></div>
+      <div class="shade-header">
+        <div class="shade-title">Quick Settings & Screen Sync</div>
+        <button class="shade-close-btn" onclick="PocketVault.toggleQuickSettings()">✕</button>
+      </div>
+
+      <!-- Quick Toggles Grid -->
+      <div class="quick-toggles-grid">
+        <div class="toggle-tile active" id="toggle-autofetch" onclick="PocketVault.toggleAutoFetch()">
+          <div class="toggle-icon">🔄</div>
+          <div class="toggle-label">Auto-Fetch Screens</div>
+          <div class="toggle-sub" id="autofetch-status-label">Enabled</div>
+        </div>
+        <div class="toggle-tile" onclick="PocketVault.triggerInstantScreenRescan()">
+          <div class="toggle-icon">📸</div>
+          <div class="toggle-label">Rescan Screens</div>
+          <div class="toggle-sub">Fetch Latest</div>
+        </div>
+        <div class="toggle-tile" id="toggle-display-mode" onclick="PocketVault.toggleDisplayMode()">
+          <div class="toggle-icon">📱</div>
+          <div class="toggle-label">Display Mode</div>
+          <div class="toggle-sub" id="display-mode-label">Phone Frame</div>
+        </div>
+        <div class="toggle-tile" onclick="PocketVault.openApp('wallpaper')">
+          <div class="toggle-icon">🎨</div>
+          <div class="toggle-label">Wallpaper Center</div>
+          <div class="toggle-sub">Presets & Screens</div>
+        </div>
+      </div>
+
+      <!-- Current Sync Device Info -->
+      <div class="shade-device-info">
+        <div class="info-row">
+          <span>Active Wallpaper:</span>
+          <strong id="active-wallpaper-desc">Live Device Screen</strong>
+        </div>
+        <div class="info-row">
+          <span>Server Endpoint:</span>
+          <strong id="active-server-endpoint">Port 8288 • Read-Only</strong>
+        </div>
+      </div>
+
+      <div class="shade-actions">
+        <button class="shade-btn" onclick="PocketVault.showQRCode()">🔗 Connection QR</button>
+        <button class="shade-btn danger" onclick="PocketVault.handleLogout()">🔒 Lock Vault</button>
+      </div>
+    </div>
+
+    <!-- Mobile Home Screen (Launcher) -->
     <main id="home-screen">
-      <!-- Ambient Time & Host Info Widget -->
+      <!-- Ambient One UI Clock & Host Info Widget -->
       <section class="ambient-widget" onclick="PocketVault.openApp('settings')">
-        <div class="ambient-time" id="ambient-time-display">15:30</div>
+        <div class="ambient-time" id="ambient-time-display">16:00</div>
         <div class="ambient-date" id="ambient-date-display">Sunday, November 1</div>
         <div class="device-badge-pill">
           <span class="dot"></span>
-          <span>Galaxy S24 FE • PocketVault (8288)</span>
+          <span id="ambient-device-label">Galaxy S24 FE • PocketVault</span>
+        </div>
+        <!-- Active Screen Wallpaper Pill -->
+        <div class="wallpaper-status-pill" onclick="event.stopPropagation(); PocketVault.openApp('wallpaper')" title="Click to view shared screen wallpapers">
+          <span class="icon">🖼️</span>
+          <span id="wallpaper-status-text">Synced: Live Device Screen Wallpaper</span>
         </div>
       </section>
 
@@ -94,40 +150,89 @@
         </div>
       </section>
 
-      <!-- Quick Search Pill -->
-      <div class="quick-search-pill" onclick="PocketVault.openApp('files')">
+      <!-- Quick Search Pill Widget -->
+      <div class="quick-search-pill" onclick="PocketVault.openSearchSheet()">
         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
-        <input type="text" placeholder="Search phone files, photos, media..." readonly />
+        <span class="search-placeholder">Search device files, screenshots, media...</span>
+      </div>
+
+      <!-- Mobile Pinned App Dock (Bottom Favorite Apps) -->
+      <div class="mobile-dock">
+        <div class="dock-item" onclick="PocketVault.openApp('files')" title="Files">
+          <div class="dock-squircle icon-files">📁</div>
+        </div>
+        <div class="dock-item" onclick="PocketVault.openApp('gallery')" title="Gallery">
+          <div class="dock-squircle icon-gallery">🖼️</div>
+        </div>
+        <div class="dock-item" onclick="PocketVault.openApp('wallpaper')" title="Wallpapers">
+          <div class="dock-squircle icon-wall">🎨</div>
+        </div>
+        <div class="dock-item" onclick="PocketVault.openApp('settings')" title="Settings">
+          <div class="dock-squircle icon-settings">⚙️</div>
+        </div>
       </div>
     </main>
 
-    <!-- Mobile Navigation Bar (Bottom 3-Button) -->
+    <!-- Floating Mini Music Player (Appears when audio track is active) -->
+    <div id="mini-music-player">
+      <div class="mini-player-icon">🎵</div>
+      <div class="mini-player-info">
+        <div class="mini-player-title" id="mini-player-title">Track Name</div>
+        <div class="mini-player-subtitle">PocketVault Audio Stream</div>
+      </div>
+      <button class="mini-player-btn" id="mini-play-toggle" onclick="PocketVault.toggleAudioPlayback()">⏸</button>
+      <button class="mini-player-btn close" onclick="PocketVault.stopAudioPlayback()">✕</button>
+    </div>
+
+    <!-- Hidden audio element for background streaming -->
+    <audio id="global-audio-stream" playsinline preload="auto"></audio>
+
+    <!-- Mobile Navigation Bar (Bottom 3-Button & Gesture Pill) -->
     <nav class="mobile-nav-bar">
-      <button class="nav-button" onclick="PocketVault.closeActiveSheet()" title="Back">
-        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-          <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
-      </button>
-      <button class="nav-button" onclick="PocketVault.goHome()" title="Home">
-        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="9"></circle>
-        </svg>
-      </button>
-      <button class="nav-button" onclick="PocketVault.openApp('settings')" title="Vault Info">
-        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-          <line x1="4" y1="6" x2="20" y2="6"></line>
-          <line x1="4" y1="12" x2="20" y2="12"></line>
-          <line x1="4" y1="18" x2="20" y2="18"></line>
-        </svg>
-      </button>
+      <div class="nav-gesture-bar" onclick="PocketVault.goHome()"></div>
+      <div class="nav-button-container">
+        <button class="nav-button" onclick="PocketVault.closeActiveSheet()" title="Back">
+          <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <button class="nav-button" onclick="PocketVault.goHome()" title="Home">
+          <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9"></circle>
+          </svg>
+        </button>
+        <button class="nav-button" onclick="PocketVault.toggleQuickSettings()" title="Quick Settings">
+          <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <line x1="4" y1="6" x2="20" y2="6"></line>
+            <line x1="4" y1="12" x2="20" y2="12"></line>
+            <line x1="4" y1="18" x2="20" y2="18"></line>
+          </svg>
+        </button>
+      </div>
     </nav>
 
     <!-- ---------------------------------------------------------------------- -->
-    <!-- App Sheets (Fullscreen Mobile Views)                                   -->
+    <!-- App Sheets (Fullscreen Mobile Views with Native Slide Transitions)     -->
     <!-- ---------------------------------------------------------------------- -->
+
+    <!-- Search Sheet -->
+    <section class="mobile-app-sheet" id="sheet-search">
+      <div class="sheet-header">
+        <div class="sheet-header-left">
+          <button class="sheet-back-btn" onclick="PocketVault.closeActiveSheet()">‹</button>
+          <div class="sheet-title">Universal Search</div>
+        </div>
+      </div>
+      <div class="sheet-body">
+        <div class="search-input-wrapper">
+          <input type="text" id="live-search-input" placeholder="Search across all files & screens..." oninput="PocketVault.handleSearchInput(this.value)" autofocus />
+        </div>
+        <div id="search-results-container" style="margin-top:14px;"></div>
+      </div>
+    </section>
 
     <!-- My Files Sheet -->
     <section class="mobile-app-sheet" id="sheet-files">
@@ -135,6 +240,9 @@
         <div class="sheet-header-left">
           <button class="sheet-back-btn" onclick="PocketVault.closeActiveSheet()">‹</button>
           <div class="sheet-title">My Files</div>
+        </div>
+        <div class="sheet-header-right">
+          <button class="sheet-action-icon" onclick="PocketVault.refreshFiles()">🔄</button>
         </div>
       </div>
       <div class="sheet-body">
@@ -208,15 +316,49 @@
       </div>
     </section>
 
-    <!-- Wallpaper Picker Sheet -->
+    <!-- Wallpaper & Shared Screen Sync Sheet -->
     <section class="mobile-app-sheet" id="sheet-wallpaper">
       <div class="sheet-header">
         <div class="sheet-header-left">
           <button class="sheet-back-btn" onclick="PocketVault.closeActiveSheet()">‹</button>
-          <div class="sheet-title">Phone Wallpaper</div>
+          <div class="sheet-title">Wallpapers & Screens</div>
+        </div>
+        <div class="sheet-header-right">
+          <button class="sheet-action-icon" onclick="PocketVault.triggerInstantScreenRescan()" title="Rescan Shared Screens">🔄</button>
         </div>
       </div>
       <div class="sheet-body">
+        <!-- Auto-Fetch Hero Controls -->
+        <div class="auto-fetch-hero">
+          <div class="hero-top">
+            <div class="hero-text-col">
+              <div class="hero-title">Auto-Fetch Shared Screens</div>
+              <div class="hero-desc">Automatically fetch & sync wallpapers from connected screen devices & screenshots.</div>
+            </div>
+            <label class="switch-toggle">
+              <input type="checkbox" id="hero-autofetch-checkbox" onchange="PocketVault.toggleAutoFetchFromCheckbox(this.checked)" checked />
+              <span class="slider-round"></span>
+            </label>
+          </div>
+          <div class="hero-actions">
+            <button class="hero-sync-btn" onclick="PocketVault.triggerInstantScreenRescan()">
+              <span>📸 Rescan & Fetch Latest Screen</span>
+            </button>
+          </div>
+          <!-- Blur & Dim Sliders -->
+          <div class="slider-controls-group">
+            <div class="slider-row">
+              <span>Ambient Blur:</span>
+              <input type="range" id="wallpaper-blur-slider" min="0" max="40" value="16" oninput="PocketVault.handleBlurSlider(this.value)" />
+            </div>
+            <div class="slider-row">
+              <span>Backdrop Dim:</span>
+              <input type="range" id="wallpaper-dim-slider" min="10" max="80" value="35" oninput="PocketVault.handleDimSlider(this.value)" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Wallpaper Category Grid Container -->
         <div id="wallpaper-grid-container"></div>
       </div>
     </section>
@@ -251,8 +393,15 @@
             <div class="file-meta" id="setting-env">Detecting...</div>
           </div>
         </div>
+        <div class="file-row" onclick="PocketVault.toggleDisplayMode()" style="cursor:pointer;">
+          <div class="file-icon-box" style="background:#f59e0b;">📱↔️</div>
+          <div class="file-info-col">
+            <div class="file-name">Display Mode</div>
+            <div class="file-meta" id="setting-display-mode">Phone Frame (Click to toggle)</div>
+          </div>
+        </div>
         <button class="login-submit-btn" onclick="PocketVault.showQRCode()" style="margin-top:10px;">
-          Show Connection Link
+          Show Connection QR & Link
         </button>
         <button class="login-submit-btn" onclick="PocketVault.handleLogout()" style="background:#ef4444; margin-top:6px;">
           Lock & Sign Out
@@ -285,7 +434,7 @@
     </div>
 
     <!-- ---------------------------------------------------------------------- -->
-    <!-- Mobile Login Overlay                                                   -->
+    <!-- Mobile Lock Screen Overlay                                             -->
     <!-- ---------------------------------------------------------------------- -->
     <div id="login-overlay">
       <div class="login-card">
@@ -313,6 +462,6 @@
 
   </div>
 
-  <script src="/static/js/mobile_os.js?v=1"></script>
+  <script src="/static/js/mobile_os.js?v=2"></script>
 </body>
 </html>

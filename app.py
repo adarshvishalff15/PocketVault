@@ -69,7 +69,7 @@ def check_security():
     # Enforce CSRF on state-changing API requests
     if request.path.startswith("/api/") and request.method in ("POST", "PUT", "DELETE", "PATCH"):
         # Login and setup create initial session, so they don't require pre-existing CSRF
-        if request.path not in ("/api/auth/login", "/api/auth/setup", "/api/wallpaper/set"):
+        if request.path not in ("/api/auth/login", "/api/auth/setup", "/api/wallpaper/set", "/api/wallpaper/auto_fetch"):
             if not validate_csrf():
                 audit_log("CSRF_VIOLATION", session.get("username", "anonymous"), "DENIED", f"Path: {request.path}")
                 return jsonify({"success": False, "error": "Invalid or missing CSRF token."}), 403
@@ -383,16 +383,73 @@ def api_wallpaper_current():
     return jsonify({"success": True, "wallpaper": get_current_wallpaper_state()})
 
 
+@app.route("/api/wallpaper/system_screen")
+def api_wallpaper_system_screen():
+    """Serve host active screen wallpaper (Windows TranscodedWallpaper / Linux background)."""
+    from services.wallpaper_service import get_system_screen_wallpaper_path
+    wp_path = get_system_screen_wallpaper_path()
+    if not wp_path or not wp_path.exists():
+        return abort(404)
+    return send_file(wp_path, mimetype="image/jpeg", max_age=3600)
+
+
+@app.route("/api/wallpaper/spotlight")
+def api_wallpaper_spotlight():
+    """Serve Windows Spotlight high-res screen assets."""
+    file_name = request.args.get("file", "")
+    if not file_name or "/" in file_name or "\\" in file_name:
+        return abort(400)
+    localappdata = os.environ.get("LOCALAPPDATA")
+    if not localappdata:
+        return abort(404)
+    spot_file = Path(localappdata) / "Packages" / "Microsoft.Windows.ContentDeliveryManager_cw5n1h2txyewy" / "LocalState" / "Assets" / file_name
+    if not spot_file.exists():
+        return abort(404)
+    return send_file(spot_file, mimetype="image/jpeg", max_age=86400)
+
+
 @app.route("/api/wallpaper/list")
 def api_wallpaper_list():
     auth_err = require_auth()
     if auth_err:
         return auth_err
-    from services.wallpaper_service import PRESETS, discover_phone_wallpapers
+    from services.wallpaper_service import (
+        PRESETS, discover_screen_device_wallpapers, load_wallpaper_config
+    )
+    discovered = discover_screen_device_wallpapers()
+    cfg = load_wallpaper_config()
     return jsonify({
         "success": True,
         "presets": PRESETS,
-        "device_photos": discover_phone_wallpapers(),
+        "system_screen": discovered.get("system_screen"),
+        "screen_captures": discovered.get("screen_captures", []),
+        "wallpapers": discovered.get("wallpapers", []),
+        "camera_photos": discovered.get("camera_photos", []),
+        "auto_fetch": cfg.get("auto_fetch", True),
+        "auto_cycle": cfg.get("auto_cycle", False),
+    })
+
+
+@app.route("/api/wallpaper/auto_fetch", methods=["GET", "POST"])
+def api_wallpaper_auto_fetch():
+    """Rescan and automatically fetch latest wallpapers from shared screen devices."""
+    auth_err = require_auth()
+    if auth_err:
+        return auth_err
+    from services.wallpaper_service import (
+        auto_fetch_latest_screen_wallpaper, discover_screen_device_wallpapers
+    )
+    if request.method == "POST":
+        new_state = auto_fetch_latest_screen_wallpaper()
+        return jsonify({
+            "success": True,
+            "message": "Auto-fetched latest screen wallpaper from shared devices.",
+            "wallpaper": new_state,
+        })
+    discovered = discover_screen_device_wallpapers()
+    return jsonify({
+        "success": True,
+        "discovered": discovered,
     })
 
 
@@ -407,10 +464,16 @@ def api_wallpaper_set():
     if "preset_id" in data:
         cfg["active_type"] = "preset"
         cfg["active_id"] = data["preset_id"]
+    elif data.get("active_type") == "system_screen":
+        cfg["active_type"] = "system_screen"
+    elif data.get("active_type") == "auto_screen":
+        cfg["active_type"] = "auto_screen"
     elif "custom_rel_path" in data:
         cfg["active_type"] = "custom"
         cfg["custom_root_id"] = int(data.get("root_id", 0))
         cfg["custom_rel_path"] = data["custom_rel_path"]
+    if "auto_fetch" in data:
+        cfg["auto_fetch"] = bool(data["auto_fetch"])
     if "blur_level" in data:
         cfg["blur_level"] = int(data["blur_level"])
     if "dim_level" in data:

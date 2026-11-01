@@ -9,7 +9,9 @@ PocketVault transforms your Android smartphone (tested on **Samsung Galaxy S24 F
 ## 🌟 Key Highlights
 
 - 📱 **Mobile-Native OS Experience**: Replaces desktop-oriented web interfaces with an authentic **Samsung One UI / Android style mobile home screen** featuring squircle app icons, a live ambient clock widget, storage summary card, and a bottom gesture navigation bar.
-- 🎨 **Dynamic Phone Wallpaper Integration**: PocketVault uses your phone's authentic wallpaper (or any selected camera photo from your gallery) as the ambient frosted-glass background for the login screen and home dashboard.
+- 🎨 **Auto-Fetch Wallpapers from Shared Screen Devices**: Automatically scans connected screen devices, active desktop/mobile wallpapers (Windows 4K TranscodedWallpaper, Spotlight, Android wallpapers), and shared device screenshots to set real-time ambient backgrounds with live blur & dim controls.
+- 🎛️ **Quick Settings Control Center**: Tap the top mobile status bar to slide down a Samsung One UI control shade with quick toggles for Auto-Fetch, Rescan Screens, and Phone/Tablet display modes.
+- 🎵 **Persistent Floating Mini Music Player**: Listen to background audio with lockscreen controls while browsing photos, files, and wallpapers.
 - 🛡️ **Read-Only v1.0 Safety Guarantee**: Absolute protection for your phone's internal storage. There are **zero** file modification, write, delete, rename, or upload endpoints in v1.0. Your original files are 100% safe.
 - 🔌 **Default Port `8288`**: Runs by default on port `8288` (`http://<phone-ip>:8288`).
 - 📷 **Terminal QR Code**: Prints an instant ASCII QR code right in the Termux / Linux console so you can pair other phones with a simple camera scan.
